@@ -1,0 +1,295 @@
+{
+  "title": "Push notifications inside TapInvest",
+  "subtitle": "Today's committed code on Android: MoEngage's service owns the mailbox. Lines from commit 89a6247a.",
+  "theme": "ultra",
+  "repo": "D:/Flutter/mobile_apps",
+  "ref": "89a6247a",
+  "meta": {
+    "description": "The concept mapped onto TapInvest as committed today: FcmService (token), MoEngage's push service → PushListener → NotificationUtil (open app), Android (closed app), MainActivity's three ways to find the link, DeepLinkService.",
+    "tags": ["reference", "notifications", "explainer", "moengage-task"],
+    "order": 4,
+    "theme": "ultra",
+    "kind": "flow"
+  },
+  "actors": [
+    {
+      "id": "user", "name": "User", "about": "phone in hand", "icon": "person", "tone": "person",
+      "explain": "Sees the notification and taps it."
+    },
+    {
+      "id": "os", "name": "Android", "about": "OS + Play Services", "icon": "os", "tone": "platform",
+      "explain": "Receives pushes from Google's FCM. Draws them itself when TapInvest is closed; hands them to the mailbox service when it's open."
+    },
+    {
+      "id": "moe", "name": "MoEngage service", "about": "the mailbox today", "icon": "inbox", "tone": "platform",
+      "explain": "MoEFireBaseMessagingService, MoEngage's SDK class. Declared in our manifest for MESSAGING_EVENT, so it receives every open-app push, and passes ours on to PushListener.",
+      "file": "AndroidManifest.xml:331-337"
+    },
+    {
+      "id": "notif", "name": "NotificationUtil", "about": "Kotlin · draws it", "icon": "bell", "tone": "you",
+      "explain": "Our Kotlin helper. PushListener calls it; it builds the card and puts the deeplink into the tap's Intent.",
+      "file": "PushListener.kt:8-13, NotificationUtil.kt:29-76"
+    },
+    {
+      "id": "main", "name": "MainActivity", "about": "Kotlin · opens app", "icon": "door", "tone": "you",
+      "explain": "Started by any tap. Finds the deeplink in one of three places and hands it to Dart.",
+      "file": "MainActivity.kt:31-67"
+    },
+    {
+      "id": "deeplink", "name": "DeepLinkService", "about": "Dart · picks screen", "icon": "route", "tone": "you",
+      "explain": "Dart side. Receives the link, waits until the app config is ready, then asks the backend what the link should open.",
+      "file": "deep_link_service.dart:29-90"
+    },
+    {
+      "id": "fcmsvc", "name": "FcmService", "about": "Dart · token only", "icon": "key", "tone": "you",
+      "explain": "Dart side. Only manages the address: gets it, sends it to the backend after login, re-sends on refresh. It never receives a push.",
+      "file": "fcm_service.dart:25-101"
+    },
+    {
+      "id": "backend", "name": "Tap backend", "about": "via Google FCM", "icon": "server", "tone": "server",
+      "explain": "Stores each user's token, sends pushes through Google FCM, and answers 'which screen?' for deeplinks."
+    }
+  ],
+  "steps": [
+    {
+      "short": "The cast",
+      "title": "Who's who in TapInvest today",
+      "summary": "The concept's 'Your app' is split into real classes: two Kotlin classes of ours, MoEngage's service (an SDK class in our manifest), and two Dart services. Dart never receives pushes; it only handles the token and picks the screen.",
+      "oneliner": "Kotlin draws notifications and opens the app. Dart does the token and the screen.",
+      "boardHint": "Press Next → to follow a real TapInvest push."
+    },
+    {
+      "short": "Token",
+      "title": "Register the address (token)",
+      "summary": "When the app starts, FcmService gets the token and compares it with the one it saved. If it's new and the user is logged in, it sends it to the backend. It also re-runs after every login.",
+      "oneliner": "Logged-out users have no token on the backend, so they get no pushes. By design.",
+      "messages": [
+        {
+          "from": "fcmsvc", "to": "os", "label": "getToken()", "kind": "main",
+          "why": "FcmService is a @singleton with @postConstruct, so this runs once at startup. It also hooks login (register) and logout (delete the token).",
+          "file": "fcm_service.dart:25-45",
+          "code": {
+            "path": "packages/services/lib/src/fcm/fcm_service.dart", "from": 25, "to": 45, "focus": [28, 41, 44],
+            "notes": {
+              "28": "Listens for refreshes. That's the 'New address' step at the end.",
+              "41": "Every login re-runs registration, so the token gets linked to the new user.",
+              "44": "And once now, at startup."
+            }
+          }
+        },
+        {
+          "from": "os", "to": "fcmsvc", "label": "token", "kind": "return",
+          "why": "Compared with the saved one. Only a changed token goes to the backend: this is the 'check at every start' safety net from the concept.",
+          "file": "fcm_service.dart:47-62",
+          "code": {
+            "path": "packages/services/lib/src/fcm/fcm_service.dart", "from": 47, "to": 62, "focus": [49, 53, 60],
+            "notes": {
+              "49": "The token we sent last time, from SharedPreferences.",
+              "53": "The token Google says is current.",
+              "60": "Different? Then send it."
+            }
+          }
+        },
+        {
+          "from": "fcmsvc", "to": "backend", "label": "POST token (if logged in)", "kind": "main",
+          "why": "Sent as a normal CTA through CtaService, so it uses the same HTTP path as explainer 05. Line 97 has a bug from the handoff: Future.value starts both calls but waits for neither (Future.wait would), so a failed upload goes unnoticed.",
+          "file": "fcm_service.dart:80-101",
+          "code": {
+            "path": "packages/services/lib/src/fcm/fcm_service.dart", "from": 80, "to": 101, "focus": [84, 97],
+            "notes": {
+              "84": "Not logged in: quietly stop. The login listener (line 41) will try again.",
+              "97": "🐞 Should be Future.wait. Read in code, not seen at runtime."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "short": "App open",
+      "title": "A push arrives while TapInvest is open",
+      "summary": "The app is on screen, so Android hands the push to the mailbox. Today that's MoEngage's service. It sees the push isn't a MoEngage campaign and passes it to our PushListener, which asks NotificationUtil to draw it.",
+      "oneliner": "Open-app pushes go through MoEngage today. Remove MoEngage without a new mailbox and this whole step silently stops.",
+      "messages": [
+        {
+          "from": "backend", "to": "os", "label": "push (via Google FCM)", "kind": "main",
+          "why": "Carries a notification part (title, body) and a data part with a 'deeplink' key."
+        },
+        {
+          "from": "os", "to": "moe", "label": "onMessageReceived", "kind": "main",
+          "why": "Android delivers to the service registered for MESSAGING_EVENT. Ours is MoEngage's, declared in our own manifest. (Why it wins over the Flutter plugin's service is the 'one mailbox' explainer.)",
+          "file": "AndroidManifest.xml:331-337",
+          "code": {
+            "path": "apps/ultra_app/android/app/src/main/AndroidManifest.xml", "from": 331, "to": 337, "focus": [332, 335],
+            "notes": {
+              "332": "An SDK class, not ours. MoEngage wrote this mailbox.",
+              "335": "The intent filter that makes it 'the push mailbox'."
+            }
+          }
+        },
+        {
+          "from": "moe", "to": "notif", "label": "not mine → PushListener", "kind": "main",
+          "why": "At app start, TapApp initialises MoEngage, which registers our PushListener for 'non-MoEngage' pushes. PushListener just forwards to NotificationUtil.",
+          "file": "MoEngage.kt:50-51, PushListener.kt:10-13",
+          "code": {
+            "path": "apps/ultra_app/android/app/src/main/kotlin/com/tap/app/MoEngage.kt", "from": 42, "to": 55, "focus": [46, 51],
+            "notes": {
+              "46": "MoEngage starts (called from TapApp.onCreate).",
+              "51": "'Pushes that aren't MoEngage's: give them to PushListener.' That's how our backend's pushes reach our code."
+            }
+          }
+        },
+        {
+          "from": "notif", "to": "user", "label": "draw the card", "kind": "return",
+          "why": "Reads title and body from the notification part. If there's no notification part (a data-only push), it returns and nothing shows.",
+          "file": "NotificationUtil.kt:29-40",
+          "code": {
+            "path": "apps/ultra_app/android/app/src/main/kotlin/com/tap/app/NotificationUtil.kt", "from": 29, "to": 40, "focus": [31, 35],
+            "notes": {
+              "31": "No notification part → stop. Data-only pushes never show while the app is open.",
+              "35": "The link: the 'deeplink' data key, or the notification's own link."
+            }
+          }
+        },
+        {
+          "from": "notif", "to": "notif", "label": "pack the link into the tap", "kind": "main",
+          "why": "Builds the PendingIntent for the tap. Note where the link goes: intent.data, not an extra. That matters in the Tap step.",
+          "file": "NotificationUtil.kt:48-59",
+          "code": {
+            "path": "apps/ultra_app/android/app/src/main/kotlin/com/tap/app/NotificationUtil.kt", "from": 48, "to": 59, "focus": [51, 56],
+            "notes": {
+              "51": "The deeplink goes into intent.data.",
+              "56": "The pre-packed 'open MainActivity' that Android fires on tap."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "short": "App closed",
+      "title": "A push arrives while TapInvest is closed",
+      "summary": "TapInvest isn't on screen, so Android draws the card itself from the notification part. None of our code runs, and neither does MoEngage's. The data part waits inside the card.",
+      "oneliner": "Closed-app pushes never touch MoEngage. That's why removing MoEngage can't break them, and why the open-app bug is easy to miss.",
+      "messages": [
+        {
+          "from": "backend", "to": "os", "label": "push (via Google FCM)", "kind": "main",
+          "why": "The same push as before. Only the app's state is different."
+        },
+        {
+          "from": "os", "to": "user", "label": "Android draws it", "kind": "main",
+          "why": "Title and body from the notification part. The data map ('deeplink': …) is attached as Intent extras for the tap. Different from our own cards, which use intent.data."
+        }
+      ]
+    },
+    {
+      "short": "Tap",
+      "title": "The tap: three places the link can be",
+      "summary": "Any tap starts MainActivity. Because different code drew the card, the link can be in three different places, so extractDeeplink checks all three in order. Then it hands the link to Dart.",
+      "oneliner": "Our cards: intent.data. MoEngage campaigns: 'deeplink_url'. Android-drawn cards: the 'deeplink' extra.",
+      "messages": [
+        {
+          "from": "user", "to": "os", "label": "tap", "kind": "main",
+          "why": "Android fires the card's PendingIntent."
+        },
+        {
+          "from": "os", "to": "main", "label": "start MainActivity", "kind": "main",
+          "why": "Cold start (app was killed): onCreate saves the link for Dart to fetch once Flutter is ready. Warm (already running): onNewIntent sends it straight away.",
+          "file": "MainActivity.kt:31-49",
+          "code": {
+            "path": "apps/ultra_app/android/app/src/main/kotlin/com/tap/app/MainActivity.kt", "from": 31, "to": 49, "focus": [40, 47],
+            "notes": {
+              "40": "Cold start: just remember it. Dart isn't listening yet.",
+              "47": "App already running: push it to Dart now."
+            }
+          }
+        },
+        {
+          "from": "main", "to": "main", "label": "extractDeeplink: 3 doors", "kind": "main",
+          "why": "Checked in order. The middle one is MoEngage's own campaigns, and it's the only MoEngage code in this file (step 1 removes it).",
+          "file": "MainActivity.kt:51-67",
+          "code": {
+            "path": "apps/ultra_app/android/app/src/main/kotlin/com/tap/app/MainActivity.kt", "from": 51, "to": 67, "focus": [52, 59, 66],
+            "notes": {
+              "52": "Door 1: cards we drew (NotificationUtil put it in intent.data).",
+              "59": "Door 2: MoEngage campaign cards use 'deeplink_url'.",
+              "66": "Door 3: cards Android drew (closed app): the push's data arrives as extras."
+            }
+          }
+        },
+        {
+          "from": "main", "to": "deeplink", "label": "link (method channel)", "kind": "main",
+          "why": "New term: method channel. Flutter's bridge between Kotlin and Dart, like calling a function across two languages. Dart registers its handler, and on cold start asks for the stored link.",
+          "file": "deep_link_service.dart:29-40",
+          "code": {
+            "path": "packages/services/lib/src/deep_link/deep_link_service.dart", "from": 29, "to": 40, "focus": [32, 34],
+            "notes": {
+              "32": "Warm taps arrive here.",
+              "34": "Cold start: pull the link MainActivity stored in onCreate."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "short": "Screen",
+      "title": "Dart asks the backend which screen to open",
+      "summary": "DeepLinkService doesn't decode the link itself. It waits until the app config is loaded, then sends the link to the backend, which replies with CTAs: a base screen and the target screen.",
+      "oneliner": "The push only carries a link. The backend decides the screen.",
+      "messages": [
+        {
+          "from": "deeplink", "to": "backend", "label": "POST DEEPLINK_ENDPOINT", "kind": "main",
+          "why": "If config isn't fetched yet (cold start), the link is parked and handled later. Then it goes to the backend as a normal NetworkCta, so the same HTTP path as explainer 05.",
+          "file": "deep_link_service.dart:50-74",
+          "code": {
+            "path": "packages/services/lib/src/deep_link/deep_link_service.dart", "from": 50, "to": 74, "focus": [53, 71],
+            "notes": {
+              "53": "Too early? Park the link and handle it once the config arrives.",
+              "71": "Ask the backend what this link means."
+            }
+          }
+        },
+        {
+          "from": "backend", "to": "deeplink", "label": "base screen + target CTAs", "kind": "return",
+          "why": "Two CTAs, so the back button works: e.g. home underneath, order details on top."
+        },
+        {
+          "from": "deeplink", "to": "user", "label": "screen opens", "kind": "return",
+          "why": "CtaService runs both CTAs, which navigates. A 'silent' link just makes a request without opening anything.",
+          "file": "deep_link_service.dart:76-85",
+          "code": {
+            "path": "packages/services/lib/src/deep_link/deep_link_service.dart", "from": 76, "to": 85, "focus": [79, 82, 83],
+            "notes": {
+              "79": "Silent: run the request, show nothing.",
+              "82": "First the screen underneath…",
+              "83": "…then the target screen on top."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "short": "Refresh",
+      "title": "The token changes",
+      "summary": "Google rotates the token. FcmService listens on onTokenRefresh and re-sends. But that event starts in the mailbox's onNewToken, and today the mailbox is MoEngage's, not the Flutter plugin's.",
+      "oneliner": "Whoever owns the mailbox owns token refreshes. That's why step 1's new service extends the plugin's class.",
+      "messages": [
+        {
+          "from": "os", "to": "moe", "label": "onNewToken", "kind": "async",
+          "why": "Delivered to the MESSAGING_EVENT service, same as pushes. Reasoning, not verified: MoEngage's service may not forward this to the Flutter plugin, in which case Dart's onTokenRefresh doesn't fire."
+        },
+        {
+          "from": "moe", "to": "fcmsvc", "label": "onTokenRefresh (if forwarded)", "kind": "async",
+          "why": "The Dart listener from line 28. Even if it never fires, the startup check (lines 49-61) catches the new token on the next launch.",
+          "file": "fcm_service.dart:74-78",
+          "code": {
+            "path": "packages/services/lib/src/fcm/fcm_service.dart", "from": 74, "to": 78, "focus": [77],
+            "notes": { "77": "Same upload path as the Token step." }
+          }
+        },
+        {
+          "from": "fcmsvc", "to": "backend", "label": "POST new token", "kind": "async",
+          "why": "The backend now writes to the new address."
+        }
+      ]
+    }
+  ]
+}

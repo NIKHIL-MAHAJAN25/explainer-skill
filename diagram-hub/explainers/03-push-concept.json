@@ -1,0 +1,151 @@
+{
+  "title": "How a push notification travels",
+  "subtitle": "The general idea on Android, true for any app. One new term per step.",
+  "theme": "neutral",
+  "meta": {
+    "description": "Token as an address, the two kinds of push (notification vs data), who draws it when the app is closed vs open, the one 'mailbox' service, the tap, and the token refresh.",
+    "tags": ["lesson", "notifications", "explainer"],
+    "order": 3,
+    "theme": "neutral",
+    "kind": "concept"
+  },
+  "actors": [
+    {
+      "id": "user", "name": "User", "about": "holds the phone", "icon": "person", "tone": "person",
+      "explain": "Sees the notification in the tray and taps it."
+    },
+    {
+      "id": "app", "name": "Your app", "about": "code you write", "icon": "app", "tone": "you",
+      "explain": "Asks for an address, tells the backend about it, and (only in some cases) draws the notification itself."
+    },
+    {
+      "id": "os", "name": "Android", "about": "OS + Play Services", "icon": "os", "tone": "platform",
+      "explain": "Keeps one always-on connection to Google for every app on the phone, receives pushes on it, and either draws them or hands them to your app."
+    },
+    {
+      "id": "fcm", "name": "FCM", "about": "Google's push servers", "icon": "cloud", "tone": "platform",
+      "explain": "Firebase Cloud Messaging. The post office: it hands out addresses and delivers messages to them."
+    },
+    {
+      "id": "backend", "name": "Your backend", "about": "decides what to send", "icon": "server", "tone": "server",
+      "explain": "Stores each user's address and decides when a user should be told something."
+    }
+  ],
+  "steps": [
+    {
+      "short": "The cast",
+      "title": "Meet the five players",
+      "summary": "A push passes through five players. The key fact: your backend never talks to the phone directly. Google's FCM always sits in the middle.",
+      "oneliner": "Think of the post: your backend writes a letter, FCM is the post office, Android is the house, your app is the person inside.",
+      "boardHint": "Press Next → to follow one push from start to finish."
+    },
+    {
+      "short": "Address",
+      "title": "Get an address (the token)",
+      "summary": "Before anything can be sent, the backend must know where this phone is. That address is a long random string called a token. One token = one app on one phone.",
+      "oneliner": "No token saved on the backend means no pushes for that user. It's the first thing to check when 'pushes don't arrive'.",
+      "messages": [
+        {
+          "from": "app", "to": "os", "label": "getToken()", "kind": "main",
+          "why": "New term: token. A postal address for 'this app on this phone'. It isn't tied to the user: if two people log in on one phone, it's the same token."
+        },
+        {
+          "from": "os", "to": "fcm", "label": "register app + phone", "kind": "main",
+          "why": "Android asks Google to create (or look up) the address for this app/phone pair."
+        },
+        {
+          "from": "fcm", "to": "app", "label": "token", "kind": "return",
+          "why": "The address comes back, through Android, to your app."
+        },
+        {
+          "from": "app", "to": "backend", "label": "save token for user 42", "kind": "main",
+          "why": "Your app links the address to a user. Usually only after login, because the backend needs to know who this phone belongs to."
+        }
+      ]
+    },
+    {
+      "short": "Send",
+      "title": "Send the push: two kinds of letter",
+      "summary": "Something happens (an order fills, money arrives) and the backend asks FCM to deliver to that token. What it puts inside decides everything later: a 'notification' part, a 'data' part, or both.",
+      "oneliner": "notification = 'Android, please show this'. data = 'app, here's some info'. Most pushes carry both.",
+      "messages": [
+        {
+          "from": "backend", "to": "fcm", "label": "to token X: notification + data", "kind": "main",
+          "why": "New term: the two parts of a push. 'notification' {title, body} is a ready-to-show card. 'data' {deeplink: …} is a plain key-value map only your code understands."
+        },
+        {
+          "from": "fcm", "to": "os", "label": "deliver", "kind": "main",
+          "why": "Down the phone's single always-on connection to Google, shared by every app. That's why a push arrives even when your app is closed: your app doesn't need its own connection."
+        }
+      ]
+    },
+    {
+      "short": "App closed",
+      "title": "App closed or in the background: Android draws it",
+      "summary": "If your app isn't on screen and the push has a 'notification' part, Android draws the card itself. Your code doesn't run at all. The 'data' part is tucked inside the card for later.",
+      "oneliner": "App closed + notification part = Android's job. Your code only wakes up when the user taps.",
+      "messages": [
+        {
+          "from": "os", "to": "user", "label": "draws the card in the tray", "kind": "main",
+          "why": "Using the push's title and body, on your app's notification channel. The data map is kept and given to your app if the card is tapped."
+        },
+        {
+          "from": "os", "to": "app", "label": "data-only push → wake the app", "kind": "async",
+          "why": "The exception: a push with only a 'data' part has nothing for Android to draw. So Android wakes your app's push service and lets your code decide. (Which format our backend sends is still an open question.)"
+        }
+      ]
+    },
+    {
+      "short": "App open",
+      "title": "App open: your code must draw it",
+      "summary": "If your app is on screen, Android does not draw anything. It hands the whole push to your app's push service, and your code must build the notification itself, or nothing appears.",
+      "oneliner": "App open = your job. Forget it and the push silently vanishes, with no error anywhere.",
+      "messages": [
+        {
+          "from": "os", "to": "app", "label": "onMessageReceived(push)", "kind": "main",
+          "why": "New term: the push service, your app's mailbox. A Service declared in AndroidManifest.xml with the intent filter MESSAGING_EVENT. Like any Android Service, the system starts it and calls it; you never call it yourself."
+        },
+        {
+          "from": "app", "to": "user", "label": "build + show the notification", "kind": "return",
+          "why": "Your code makes the card with NotificationCompat.Builder and NotificationManager.notify(), exactly as in any Android app. The catch, covered in a later explainer: an app has only ONE mailbox that receives pushes."
+        }
+      ]
+    },
+    {
+      "short": "Tap",
+      "title": "The user taps it",
+      "summary": "A tap always opens the app, and the push's data rides along inside the Intent. Your app reads it (usually a deeplink) and opens the right screen.",
+      "oneliner": "The push only carries a link. Which screen that link means is your app's (or backend's) decision.",
+      "messages": [
+        {
+          "from": "user", "to": "os", "label": "taps the card", "kind": "main",
+          "why": "New term: PendingIntent. Each card holds a pre-packed 'start this Activity with this data' that Android can fire on your app's behalf, even if your app isn't running."
+        },
+        {
+          "from": "os", "to": "app", "label": "start Activity + data", "kind": "main",
+          "why": "Where the link sits depends on who drew the card. Android-drawn: the data map arrives as Intent extras. App-drawn: wherever your code put it (often intent.data). Your Activity has to check both."
+        }
+      ]
+    },
+    {
+      "short": "New address",
+      "title": "When the address changes",
+      "summary": "Google can replace a token at any time: reinstall, cleared app data, or a routine rotation. The backend has to hear about the new one, or it keeps writing to an empty house.",
+      "oneliner": "Two safety nets: listen for onNewToken, and re-check the token on every app start.",
+      "messages": [
+        {
+          "from": "fcm", "to": "os", "label": "token changed", "kind": "async",
+          "why": "Google issues a new token on its own schedule. You can't predict or prevent it."
+        },
+        {
+          "from": "os", "to": "app", "label": "onNewToken(new)", "kind": "async",
+          "why": "Called on the same push service (the mailbox) as onMessageReceived. So whichever service owns the mailbox also owns token refreshes."
+        },
+        {
+          "from": "app", "to": "backend", "label": "update my token", "kind": "async",
+          "why": "Send the new address. Good apps also compare the current token with the saved one at every start, so even a missed refresh gets fixed on the next launch."
+        }
+      ]
+    }
+  ]
+}

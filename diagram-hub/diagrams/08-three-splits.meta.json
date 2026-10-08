@@ -1,0 +1,15 @@
+{
+  "title": "Three splits, one pattern",
+  "description": "Compares the three splits: two real plugs (Measure work), a real plug + a null plug (native adapter), and named slots with a no-op plug (MoEngage plan). Ends with the checklist and what crashes if you forget a step.",
+  "tags": [
+    "lesson",
+    "architecture",
+    "di",
+    "explainer",
+    "moengage-task",
+    "adapter-task"
+  ],
+  "order": 8,
+  "theme": "neutral",
+  "kind": "flow"
+}

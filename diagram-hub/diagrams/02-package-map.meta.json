@@ -1,0 +1,12 @@
+{
+  "title": "Package map (commit 8765b81a)",
+  "description": "Every package in mobile_apps, its dependency direction, the socket/plug pattern, and what still has to leave services.",
+  "tags": [
+    "reference",
+    "architecture",
+    "moengage-task"
+  ],
+  "order": 2,
+  "theme": "neutral",
+  "kind": "flow"
+}

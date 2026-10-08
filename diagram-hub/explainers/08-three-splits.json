@@ -1,0 +1,210 @@
+{
+  "title": "Three splits, one pattern",
+  "subtitle": "Crashlytics/Performance (done), the native adapter (done), MoEngage (next). Same socket-and-plug idea, three different shapes of plug.",
+  "theme": "neutral",
+  "repo": "D:/Flutter/mobile_apps",
+  "ref": "89a6247a",
+  "meta": {
+    "description": "Compares the three splits: two real plugs (Measure work), a real plug + a null plug (native adapter), and named slots with a no-op plug (MoEngage plan). Ends with the checklist and what crashes if you forget a step.",
+    "tags": ["lesson", "architecture", "di", "explainer", "moengage-task", "adapter-task"],
+    "order": 8,
+    "theme": "neutral",
+    "kind": "flow"
+  },
+  "actors": [
+    {
+      "id": "caller", "name": "Shared code", "about": "inside services", "icon": "bell", "tone": "you",
+      "explain": "The class in services that needs the feature: Dio's provider, EventLoggerFactory, NotificationInboxService…"
+    },
+    {
+      "id": "socket", "name": "Socket", "about": "abstract class · services", "icon": "door", "tone": "you",
+      "explain": "The abstract class in services. Sometimes new (HttpAdapterProvider), sometimes already there (EventLogger, NotificationInbox)."
+    },
+    {
+      "id": "getit", "name": "get_it", "about": "the registry", "icon": "key", "tone": "platform",
+      "explain": "Connects each socket to the plug the running app registered."
+    },
+    {
+      "id": "bonds", "name": "bonds_services", "about": "bonds' plugs", "icon": "inbox", "tone": "you",
+      "explain": "Real plugs with the real SDK: Firebase, Cronet, MoEngage (after the move)."
+    },
+    {
+      "id": "ultra", "name": "ultra_services", "about": "ultra's plugs", "icon": "inbox", "tone": "you",
+      "explain": "Ultra's plugs: sometimes a different real SDK (Measure), sometimes a 'nothing here' plug."
+    },
+    {
+      "id": "sdk", "name": "The SDK", "about": "Firebase · Cronet · MoEngage", "icon": "cloud", "tone": "platform",
+      "explain": "The third-party package that must stop shipping in ultra. It moves with the bonds plug."
+    }
+  ],
+  "steps": [
+    {
+      "short": "The cast",
+      "title": "Same pattern, three times",
+      "summary": "Split 1 (Measure work): two real plugs, Firebase vs Measure. Split 2 (native adapter): a real plug vs a 'null' plug. Split 3 (MoEngage, next): the sockets already exist, but they're named slots, and ultra needs a do-nothing plug in each.",
+      "oneliner": "What changes between splits is only the shape of ultra's plug.",
+      "boardHint": "Press Next → for split 1."
+    },
+    {
+      "short": "1 · Crash/Perf",
+      "title": "Split 1: two real plugs (done, cb7038e3)",
+      "summary": "CrashlyticsService and PerformanceService became abstract in services. Bonds plugs in Firebase, ultra plugs in Measure. Both apps really use the feature, just with different SDKs.",
+      "oneliner": "Both apps need the feature → two real plugs.",
+      "messages": [
+        {
+          "from": "caller", "to": "socket", "label": "PerformanceService", "kind": "main",
+          "why": "A socket with four methods, one of which even returns a Dio piece (an interceptor). Each app builds it with its own SDK.",
+          "file": "performance_service.dart:11-24",
+          "code": {
+            "path": "packages/services/lib/src/performance/performance_service.dart", "from": 11, "to": 24, "focus": [11, 23],
+            "notes": {
+              "11": "The socket.",
+              "23": "Bonds returns a Firebase interceptor, ultra a Measure one."
+            }
+          }
+        },
+        {
+          "from": "bonds", "to": "sdk", "label": "Firebase Crashlytics + Performance", "kind": "main",
+          "why": "Their pubspec lines moved from services to bonds_services in the same commit."
+        },
+        {
+          "from": "ultra", "to": "sdk", "label": "Measure", "kind": "main",
+          "why": "measure_flutter and measure_dio live only in ultra_services' pubspec."
+        }
+      ]
+    },
+    {
+      "short": "2 · Adapter",
+      "title": "Split 2: a real plug and a null plug (done, 89a6247a)",
+      "summary": "A brand-new socket, HttpAdapterProvider. Bonds' plug builds Cronet/NSURLSession. Ultra doesn't want a native engine at all, so its plug returns null, meaning 'keep Dio's default'. The caller handles null.",
+      "oneliner": "Only one app needs the feature → design the socket so 'nothing' is a valid answer.",
+      "messages": [
+        {
+          "from": "caller", "to": "socket", "label": "createAdapter() → adapter or null", "kind": "main",
+          "why": "The nullable return type is the design choice that keeps ultra's plug to one line and removes the isBondsApp check from services.",
+          "file": "http_adapter_provider.dart:7-17",
+          "code": {
+            "path": "packages/services/lib/src/network/adapters/http_adapter_provider.dart", "from": 7, "to": 17, "focus": [13, 16],
+            "notes": {
+              "13": "Shared constant both sides use (plan B).",
+              "16": "Nullable: 'no special engine' is allowed."
+            }
+          }
+        },
+        {
+          "from": "ultra", "to": "socket", "label": "DefaultHttpAdapterProvider → null", "kind": "main",
+          "why": "A plug that exists only to fill the socket. Without it, get_it has nothing registered and the first network call crashes.",
+          "file": "default_http_adapter_provider.dart:6-12",
+          "code": {
+            "path": "packages/ultra_services/lib/src/network/default_http_adapter_provider.dart", "from": 5, "to": 12, "focus": [6, 11],
+            "notes": {
+              "6": "Same registration line as any real plug.",
+              "11": "The whole implementation."
+            }
+          }
+        },
+        {
+          "from": "bonds", "to": "sdk", "label": "native_dio_adapter", "kind": "main",
+          "why": "The one pubspec line that moved. Ultra's dependency tree no longer has it (checked with pub deps)."
+        }
+      ]
+    },
+    {
+      "short": "3a · Events",
+      "title": "Split 3a (next): MoEngage events, a named slot",
+      "summary": "The socket already exists: EventLogger. But EventLoggerFactory asks for four of them, told apart by name. MoEngage's logger is registered in services today. Plan: move it to bonds_services, and give ultra a do-nothing logger under the same name.",
+      "oneliner": "Named slot → ultra must fill that exact name, or the app crashes at startup.",
+      "messages": [
+        {
+          "from": "caller", "to": "socket", "label": "@Named('MoEngageEventLogger')", "kind": "main",
+          "why": "New term: named slot. When one socket type is plugged several times, @Named picks which one. Like Hilt's @Named qualifier. Each name is its own slot that must be filled.",
+          "file": "event_logger_factory.dart:5-17",
+          "code": {
+            "path": "packages/services/lib/src/events/event_logger_factory.dart", "from": 5, "to": 17, "focus": [9, 15],
+            "notes": {
+              "9": "This slot is the one to fill differently per app.",
+              "15": "Same socket type as the other three: EventLogger."
+            }
+          }
+        },
+        {
+          "from": "socket", "to": "sdk", "label": "today: MoEngageEventLogger in services", "kind": "main",
+          "why": "Registered in the shared package, so moengage_flutter ships to ultra. This is the plug that moves to bonds_services.",
+          "file": "moengage.dart:1-11",
+          "code": {
+            "path": "packages/services/lib/src/events/moengage/moengage.dart", "from": 1, "to": 11, "focus": [3, 6, 7],
+            "notes": {
+              "3": "The SDK import that leaks into ultra.",
+              "6": "The slot's name.",
+              "7": "A factory plug for the EventLogger socket."
+            }
+          }
+        },
+        {
+          "from": "ultra", "to": "getit", "label": "plan: no-op logger, same name", "kind": "main",
+          "why": "Decision still open (handoff 2b): a do-nothing EventLogger in ultra_services named 'MoEngageEventLogger' (recommended), or make the factory's slot optional. CtaService is built eagerly and needs this factory, so a missing slot means a startup crash."
+        }
+      ]
+    },
+    {
+      "short": "3b · Inbox",
+      "title": "Split 3b (next): MoEngage inbox, a named slot + a lifetime fix",
+      "summary": "Same shape: NotificationInbox socket, @Named('MoengageInbox') slot. Two extra things: MoengageInbox is an eager @Singleton (must become @LazySingleton once it lives in bonds_services), and NotificationInboxService still checks isBondsApp.",
+      "oneliner": "When a plug moves to a per-app package, check its lifetime: eager plugs there crash on the module order.",
+      "messages": [
+        {
+          "from": "caller", "to": "socket", "label": "@Named('MoengageInbox') + isBondsApp", "kind": "main",
+          "why": "Two inbox slots, plus an app check in shared code. Once each app plugs its own inbox, that check may not be needed any more (a later decision).",
+          "file": "notification_inbox_service.dart:6-21",
+          "code": {
+            "path": "packages/services/lib/src/notifications/inbox/notification_inbox_service.dart", "from": 6, "to": 21, "focus": [10, 21],
+            "notes": {
+              "10": "The MoEngage inbox slot.",
+              "21": "Another 'which app am I?' in the shared package."
+            }
+          }
+        },
+        {
+          "from": "socket", "to": "sdk", "label": "today: eager @Singleton in services", "kind": "main",
+          "why": "Eager = built during getIt.init(), as soon as it's registered. In services that works. In bonds_services, which registers first, its dependency (EnvironmentConfig) wouldn't exist yet → crash. So it moves as @LazySingleton.",
+          "file": "moengage_inbox.dart:12-15",
+          "code": {
+            "path": "packages/services/lib/src/notifications/inbox/moengage/moengage_inbox.dart", "from": 5, "to": 15, "focus": [5, 13],
+            "notes": {
+              "5": "moengage_inbox SDK, shipped to ultra today.",
+              "13": "Eager. Must become @LazySingleton when it moves."
+            }
+          }
+        },
+        {
+          "from": "ultra", "to": "getit", "label": "plan: empty inbox (or a new one)", "kind": "main",
+          "why": "Decision still open (handoff 2c): an empty inbox under 'MoengageInbox', or a renamed/new inbox design (you lean 'new one')."
+        }
+      ]
+    },
+    {
+      "short": "Checklist",
+      "title": "The checklist for any split",
+      "summary": "1) Which SDK leaks into the other app? 2) Is there a socket already, or do I make one? Named? 3) Bonds' plug. 4) Ultra's plug: real, null, or no-op? 5) Lifetime: lazy in per-app packages. 6) Move the pubspec line. 7) Regenerate, then check the dependency tree.",
+      "oneliner": "Forget a plug → 'not registered' crash. Eager plug in a per-app package → startup crash. Forget the pubspec → the SDK still ships.",
+      "messages": [
+        {
+          "from": "getit", "to": "caller", "label": "missing plug → crash", "kind": "return",
+          "why": "get_it throws 'Object/factory with type X is not registered' the moment anything asks. For eagerly built services that's during startup, so the app never opens."
+        },
+        {
+          "from": "getit", "to": "caller", "label": "why per-app goes first", "kind": "return",
+          "why": "The comment in both injector.dart files: services eagerly builds DeepLinkService, which needs CrashlyticsService, so the per-app module must already be registered. And that's exactly why everything in it must be lazy.",
+          "file": "ultra_app injector.dart:13-22",
+          "code": {
+            "path": "apps/ultra_app/lib/di/injector.dart", "from": 13, "to": 22, "focus": [14, 19],
+            "notes": {
+              "14": "The reason for the order, written down.",
+              "19": "Per-app module first."
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

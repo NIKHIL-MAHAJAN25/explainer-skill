@@ -1,0 +1,14 @@
+{
+  "title": "One mailbox: the manifest decides",
+  "description": "Every library brings a manifest, Gradle merges them into one, Android delivers each push to exactly one MESSAGING_EVENT service (priority, then order), the silent trap of removing MoEngage alone, and step 1's TapMessagingService + tools:node=\"remove\".",
+  "tags": [
+    "lesson",
+    "notifications",
+    "manifest",
+    "explainer",
+    "moengage-task"
+  ],
+  "order": 6,
+  "theme": "neutral",
+  "kind": "concept"
+}

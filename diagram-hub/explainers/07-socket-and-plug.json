@@ -1,0 +1,217 @@
+{
+  "title": "Socket and plug: one shared package, two apps",
+  "subtitle": "How an abstract class + get_it lets each app plug in its own SDK. Worked example: the Crashlytics split from the Measure work (cb7038e3).",
+  "theme": "neutral",
+  "repo": "D:/Flutter/mobile_apps",
+  "ref": "89a6247a",
+  "meta": {
+    "description": "Why an SDK in services ships in both apps, the abstract class as a socket, each app's plug with @LazySingleton(as:), the generated registration, module order in injector.dart, and how shared code receives the right plug.",
+    "tags": ["lesson", "architecture", "di", "explainer", "moengage-task", "adapter-task"],
+    "order": 7,
+    "theme": "neutral",
+    "kind": "concept"
+  },
+  "actors": [
+    {
+      "id": "app", "name": "The app", "about": "bonds_app / ultra_app", "icon": "app", "tone": "you",
+      "explain": "Each app lists in its pubspec which packages it uses. Ultra lists ultra_services, never bonds_services, and the reverse."
+    },
+    {
+      "id": "injector", "name": "injector.dart", "about": "app · startup", "icon": "route", "tone": "you",
+      "explain": "Each app's DI setup. It says which packages register their classes, and in what order.",
+      "file": "apps/*/lib/di/injector.dart"
+    },
+    {
+      "id": "getit", "name": "get_it", "about": "the registry", "icon": "key", "tone": "platform",
+      "explain": "A global map from 'type' to 'how to build it'. Code asks get_it for a type and gets whatever was registered for it."
+    },
+    {
+      "id": "bonds", "name": "bonds_services", "about": "bonds' plugs", "icon": "inbox", "tone": "you",
+      "explain": "Bonds-only package. Holds the implementations that use Firebase Crashlytics, Firebase Performance, Cronet…"
+    },
+    {
+      "id": "ultra", "name": "ultra_services", "about": "ultra's plugs", "icon": "inbox", "tone": "you",
+      "explain": "Ultra-only package. Holds the implementations that use Measure (and the 'no native adapter' plug)."
+    },
+    {
+      "id": "socket", "name": "services", "about": "shared · sockets", "icon": "door", "tone": "you",
+      "explain": "Shared by both apps. Holds abstract classes (the sockets) and the code that uses them, but no app-specific SDK."
+    },
+    {
+      "id": "caller", "name": "Shared code", "about": "inside services", "icon": "bell", "tone": "you",
+      "explain": "Any class in services that needs the feature, e.g. the native adapter's fallback logging a Crashlytics error."
+    }
+  ],
+  "steps": [
+    {
+      "short": "The cast",
+      "title": "Who's who in a split",
+      "summary": "The idea: the shared package only describes WHAT it needs (a socket). Each app's own package provides HOW (a plug). get_it connects them at startup, and each app only ever sees its own plugs.",
+      "oneliner": "Socket in services, plug in the app's package, get_it as the wire.",
+      "boardHint": "Press Next → to see the problem this solves."
+    },
+    {
+      "short": "Problem",
+      "title": "The problem: what's in services ships in both apps",
+      "summary": "Before the Measure work, CrashlyticsService was a real Firebase class inside services, and firebase_crashlytics was in services' pubspec. Both apps depend on services, so both apps shipped Firebase Crashlytics, even ultra, which wanted Measure instead.",
+      "oneliner": "A dependency of a dependency still ends up in your APK.",
+      "messages": [
+        {
+          "from": "app", "to": "socket", "label": "depends on services", "kind": "main",
+          "why": "New term: transitive dependency. Ultra never asked for Firebase Crashlytics, but it asked for services, and services asked for Firebase. So it arrives anyway. In Gradle terms: services exposed it like an api(…) dependency.",
+          "file": "services/pubspec.yaml:30, 32 (before cb7038e3)",
+          "code": {
+            "path": "packages/services/pubspec.yaml", "ref": "cb7038e3^", "from": 28, "to": 33, "focus": [30, 32],
+            "notes": {
+              "30": "Firebase Crashlytics, in the shared package.",
+              "32": "Firebase Performance, same problem."
+            }
+          }
+        },
+        {
+          "from": "caller", "to": "socket", "label": "uses concrete Firebase class", "kind": "main",
+          "why": "The class itself imported Firebase. Anyone using CrashlyticsService was tied to Firebase, with no way for ultra to swap it.",
+          "file": "crashlytics_service.dart:1-15 (before cb7038e3)",
+          "code": {
+            "path": "packages/services/lib/src/crash/crashlytics/crashlytics_service.dart", "ref": "cb7038e3^", "from": 1, "to": 15, "focus": [3, 10],
+            "notes": {
+              "3": "The SDK import lives in the shared package.",
+              "10": "A concrete class: there's exactly one way it works."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "short": "Socket",
+      "title": "The socket: an abstract class",
+      "summary": "After the split, services keeps only a description of the feature: an abstract class with method signatures and no code. No SDK import. Shared code depends on this description, not on Firebase or Measure.",
+      "oneliner": "The socket says 'something that can record an error'. It doesn't care who.",
+      "messages": [
+        {
+          "from": "caller", "to": "socket", "label": "recordCrashlyticsError()", "kind": "main",
+          "why": "New term: abstract class. Like a Kotlin interface: it lists what must exist, without implementing it. You can't create one directly; you can only hold a reference to 'something that implements it'.",
+          "file": "crashlytics_service.dart:1-7",
+          "code": {
+            "path": "packages/services/lib/src/crash/crashlytics/crashlytics_service.dart", "from": 1, "to": 7, "focus": [1, 2],
+            "notes": {
+              "1": "abstract: a contract, not a class you can build.",
+              "2": "Just the signature. No body, no Firebase, no Measure."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "short": "Plugs",
+      "title": "The plugs: one implementation per app",
+      "summary": "Each app's own package implements the socket with its own SDK. Bonds' plug uses Firebase Crashlytics; ultra's uses Measure. The SDK line moves into that package's pubspec, so only that app gets it.",
+      "oneliner": "Same socket shape, different wiring inside. The SDK travels with the plug.",
+      "messages": [
+        {
+          "from": "bonds", "to": "socket", "label": "FirebaseCrashlyticsService implements", "kind": "main",
+          "why": "New term: implements. 'I promise to provide every method the abstract class lists', like `class X : MyInterface` in Kotlin. The compiler checks the promise.",
+          "file": "firebase_crashlytics_service.dart:9-17",
+          "code": {
+            "path": "packages/bonds_services/lib/src/crash/firebase_crashlytics_service.dart", "from": 9, "to": 17, "focus": [9, 10],
+            "notes": {
+              "9": "'Register me as the CrashlyticsService' (next step).",
+              "10": "Fills the socket's contract with Firebase code."
+            }
+          }
+        },
+        {
+          "from": "ultra", "to": "socket", "label": "MeasureCrashlyticsService implements", "kind": "main",
+          "why": "Same socket, completely different SDK inside. services can't tell the difference, and doesn't need to.",
+          "file": "measure_crashlytics_service.dart:10-18",
+          "code": {
+            "path": "packages/ultra_services/lib/src/crash/measure_crashlytics_service.dart", "from": 10, "to": 18, "focus": [10, 11],
+            "notes": {
+              "10": "Same registration, same socket type.",
+              "11": "Measure inside instead of Firebase."
+            }
+          }
+        },
+        {
+          "from": "ultra", "to": "ultra", "label": "SDK lives in this pubspec", "kind": "main",
+          "why": "measure_flutter is listed here, not in services. Only apps that depend on ultra_services (i.e. ultra) get it. Bonds' pubspec has firebase_crashlytics the same way.",
+          "file": "ultra_services/pubspec.yaml:18-19",
+          "code": {
+            "path": "packages/ultra_services/pubspec.yaml", "from": 11, "to": 19, "focus": [14, 18],
+            "notes": {
+              "14": "Depends on services, to see the socket.",
+              "18": "The SDK, now only in ultra's tree."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "short": "Register",
+      "title": "Registration: the annotation writes the wiring",
+      "summary": "@LazySingleton(as: CrashlyticsService) is an instruction to the code generator (injectable). When you run melos generate, it writes a module file that tells get_it: 'when someone asks for CrashlyticsService, build a FirebaseCrashlyticsService'.",
+      "oneliner": "You write the annotation; build_runner writes the registration; get_it stores it.",
+      "messages": [
+        {
+          "from": "bonds", "to": "getit", "label": "lazySingleton<CrashlyticsService>", "kind": "main",
+          "why": "New term: lazy singleton. Built once, on first use, then reused. Like Hilt's @Singleton + Lazy<T>. The generated file is gitignored, so this peek shows the one on your disk.",
+          "file": "bonds_services_injector.module.dart:21-34 (generated)",
+          "code": {
+            "path": "packages/bonds_services/lib/di/bonds_services_injector.module.dart", "ref": "working", "from": 20, "to": 35, "focus": [23, 25, 28],
+            "notes": {
+              "23": "The socket type is the key…",
+              "25": "…and the plug is the value. gh<…>() inside the lambda runs later, on first use.",
+              "28": "The native adapter split uses exactly the same shape."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "short": "Startup",
+      "title": "Startup: each app plugs in only its own package",
+      "summary": "Each app's injector.dart lists the modules to register, in order: its own per-app package first, then services, then common. Ultra's lists UltraServicesPackageModule; it has no way to even see bonds_services.",
+      "oneliner": "The app chooses the plugs simply by which package it lists.",
+      "messages": [
+        {
+          "from": "app", "to": "injector", "label": "configureInjection()", "kind": "main",
+          "why": "Called once in main() before the app runs. Like setting up a Hilt component before any Activity starts.",
+          "file": "ultra_app injector.dart:11-26",
+          "code": {
+            "path": "apps/ultra_app/lib/di/injector.dart", "from": 11, "to": 26, "focus": [19, 20, 26],
+            "notes": {
+              "19": "Ultra's plugs register first…",
+              "20": "…then the shared package…",
+              "26": "…and getIt.init() runs all the registrations."
+            }
+          }
+        },
+        {
+          "from": "injector", "to": "getit", "label": "register ultra plugs, then services", "kind": "main",
+          "why": "Why the plugs must be lazy: they register BEFORE services, so things they need (PreferenceService, DiagnosticLogger) don't exist yet. A lazy plug is only built later, when first asked for, by which point everything is registered."
+        }
+      ]
+    },
+    {
+      "short": "Use",
+      "title": "Shared code asks for the socket, gets the app's plug",
+      "summary": "Code in services only ever names the socket type. get_it hands it whichever plug the running app registered. In bonds that's Firebase; in ultra it's Measure. Same line of shared code, different behaviour per app.",
+      "oneliner": "Shared code depends on the socket. Each app decides the plug. That's the whole trick.",
+      "messages": [
+        {
+          "from": "caller", "to": "getit", "label": "give me a CrashlyticsService", "kind": "main",
+          "why": "New term: dependency inversion. The shared code depends on an abstraction (the socket), and the concrete choice is made outside, by the app. Usually via a constructor parameter that injectable fills in."
+        },
+        {
+          "from": "getit", "to": "caller", "label": "this app's plug", "kind": "return",
+          "why": "Ultra resolves it explicitly at startup, too, so its error handlers are installed even if nothing else asks first.",
+          "file": "ultra_app injector.dart:28-36",
+          "code": {
+            "path": "apps/ultra_app/lib/di/injector.dart", "from": 28, "to": 37, "focus": [36],
+            "notes": { "36": "Ask by socket type. Ultra gets Measure here; bonds' same line gets Firebase." }
+          }
+        }
+      ]
+    }
+  ]
+}

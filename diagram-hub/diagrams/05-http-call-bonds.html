@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>One HTTP call, tap to screen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400..800&family=JetBrains+Mono:wght@400;500&display=swap" />
+<style>
+  /* "Linen" tokens, copied from D:\family-dashboard\tailwind.config.js */
+  :root {
+    --ground: #ECE7DF; --surface: #FBF9F6; --subtle: #F3EFE9;
+    --line: #E5DFD5; --line-strong: #D4CCBF;
+    --ink: #2A2622; --ink-2: #4F4943; --ink-3: #7D756B; --ink-4: #A9A094;
+    --accent: #3D6B63; --accent-soft: #E4EEEA;
+    --ok: #4D7C5A; --ok-soft: #EAF1EA; --ok-line: #C8DCCB;
+    --watch: #AD772A; --watch-soft: #F7EEDD; --watch-line: #E9D3AC;
+    --act: #B4503C; --act-soft: #F6E5DF; --act-line: #E9C3B6;
+    --shadow-card: 0 1px 2px rgba(62,46,30,0.04), 0 12px 32px -16px rgba(62,46,30,0.16);
+    --shadow-lift: 0 2px 4px rgba(62,46,30,0.05), 0 20px 44px -20px rgba(62,46,30,0.26);
+    --accent-line: #BCD3CC;
+    --card: rgba(251,249,246,0.82); --card-soft: rgba(251,249,246,0.7); --code-bg: #FFFDF9; --halo: rgba(251,249,246,0.95);
+    --watch-ink: #6E4C1B; --watch-ink-strong: #5A3D14;
+    --amb1: #ADCBE0; --amb2: #C2DBC8; --amb3: #EAD9B8; --amb4: #C8CCE8;
+    color-scheme: light;
+  }
+
+  /* App themes, picked by the explainer's "theme": neutral (any app), bonds (BondScanner), ultra (TapInvest). */
+  html[data-theme="neutral"] {
+    --ground: #EAEAE8; --surface: #FAFAF9; --subtle: #F1F1EF; --line: #E1E1DE; --line-strong: #CFCFCB;
+    --ink: #232323; --ink-2: #4A4A48; --ink-3: #75757A; --ink-4: #A3A3A3;
+    --accent: #55606B; --accent-soft: #E6E9EC; --accent-line: #C7CDD3;
+    --card: rgba(250,250,249,0.86); --card-soft: rgba(250,250,249,0.74); --code-bg: #FCFCFB; --halo: rgba(250,250,249,0.95);
+    --amb1: #D6D9DE; --amb2: #E2E2DE; --amb3: #DAD8D4; --amb4: #D0D3D9;
+  }
+  html[data-theme="bonds"] {
+    --ground: #E4ECF5; --surface: #F7FAFD; --subtle: #EDF2F8; --line: #D9E3EE; --line-strong: #C2D1E2;
+    --ink: #16222F; --ink-2: #3B4A5B; --ink-3: #6A7B8E; --ink-4: #9AA9BA;
+    --accent: #2563A8; --accent-soft: #E1ECF8; --accent-line: #B5CDE8;
+    --card: rgba(247,250,253,0.86); --card-soft: rgba(247,250,253,0.74); --code-bg: #FAFCFE; --halo: rgba(247,250,253,0.95);
+    --amb1: #A9C8EE; --amb2: #BFD8F2; --amb3: #D3E1F2; --amb4: #B7C4EA;
+  }
+  html[data-theme="ultra"] {
+    --ground: #EFEFEF; --surface: #FFFFFF; --subtle: #F4F4F4; --line: #E4E4E4; --line-strong: #CDCDCD;
+    --ink: #0B0B0C; --ink-2: #3A3A3C; --ink-3: #6E6E73; --ink-4: #A1A1A6;
+    --accent: #0B0B0C; --accent-soft: #EDEDED; --accent-line: #BDBDBD;
+    --ok: #3A3A3C; --ok-soft: #EFEFEF; --ok-line: #D0D0D0;
+    --watch: #6E6E73; --watch-soft: #F4F4F4; --watch-line: #DADADA; --watch-ink: #2B2B2D; --watch-ink-strong: #0B0B0C;
+    --card: rgba(255,255,255,0.94); --card-soft: rgba(255,255,255,0.82); --code-bg: #FFFFFF; --halo: rgba(255,255,255,0.96);
+    --amb1: #D9D9D9; --amb2: #E9E9E9; --amb3: #D2D2D2; --amb4: #E3E3E3;
+  }
+  /* TapInvest premium: a black header bar over white cards. */
+  html[data-theme="ultra"] .bar { background: #0B0B0C; border-color: #0B0B0C; color: #FFFFFF; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  html[data-theme="ultra"] .bar .sub, html[data-theme="ultra"] .counter { color: #A1A1A6; }
+  html[data-theme="ultra"] .steps { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12); }
+  html[data-theme="ultra"] .pill { color: #A1A1A6; }
+  html[data-theme="ultra"] .pill:hover { color: #FFFFFF; background: rgba(255,255,255,0.08); }
+  html[data-theme="ultra"] .pill[aria-current="step"] { background: #FFFFFF; color: #0B0B0C; }
+  html[data-theme="ultra"] .pill .n { background: rgba(255,255,255,0.12); color: #D1D1D6; }
+  html[data-theme="ultra"] .pill[aria-current="step"] .n { background: #0B0B0C; color: #FFFFFF; }
+  html[data-theme="ultra"] .bar .btn { background: transparent; color: #FFFFFF; border-color: rgba(255,255,255,0.28); }
+  html[data-theme="ultra"] .bar .btn.primary { background: #FFFFFF; color: #0B0B0C; border-color: #FFFFFF; }
+  html[data-theme="ultra"] .actor.on { border-color: #0B0B0C; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 15px; line-height: 22px; color: var(--ink); background: var(--ground);
+    -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums;
+    overflow: hidden;
+  }
+  ::selection { background: var(--accent-soft); }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Painted backdrop: the dashboard's afternoon wash */
+  .ambient { position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background:
+      radial-gradient(70vw 70vh at 5% 0%, var(--amb1), transparent 72%),
+      radial-gradient(65vw 75vh at 100% 15%, var(--amb2), transparent 72%),
+      radial-gradient(70vw 70vh at 80% 105%, var(--amb3), transparent 72%),
+      radial-gradient(65vw 70vh at 0% 100%, var(--amb4), transparent 72%),
+      var(--ground); }
+  .glass { border: 1px solid rgba(255,255,255,0.55); background: rgba(255,255,255,0.38);
+    backdrop-filter: blur(28px); -webkit-backdrop-filter: blur(28px);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 12px 32px -18px rgba(62,46,30,0.22); }
+
+  .app { height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; gap: 14px; padding: 14px 18px 18px; }
+
+  /* Header */
+  .bar { display: flex; align-items: center; gap: 18px; min-height: 64px; padding: 10px 12px 10px 20px; border-radius: 20px; }
+  .bar .titles { min-width: 0; flex: 0 1 auto; }
+  .bar h1 { margin: 0; font-size: 18px; line-height: 24px; font-weight: 750; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar .sub { margin: 0; font-size: 13px; line-height: 18px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .steps { display: flex; gap: 6px; min-width: 0; margin: 0 auto; padding: 4px; border-radius: 14px; background: rgba(255,255,255,0.35); border: 1px solid rgba(255,255,255,0.5); overflow-x: auto; max-width: 100%; }
+  .pill { border: 0; background: transparent; padding: 7px 12px; border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink-3); white-space: nowrap; transition: background .2s, color .2s; }
+  .pill:hover { color: var(--ink); background: rgba(255,255,255,0.5); }
+  .pill[aria-current="step"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-card); }
+  .pill .n { display: inline-grid; place-items: center; width: 18px; height: 18px; margin-right: 6px; border-radius: 6px; background: var(--subtle); font-size: 11px; color: var(--ink-3); }
+  .pill[aria-current="step"] .n { background: var(--accent); color: #fff; }
+  .ctl { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+  .btn { border: 1px solid var(--line-strong); background: var(--surface); padding: 8px 14px; border-radius: 10px; font-weight: 650; font-size: 14px; cursor: pointer; transition: border-color .15s, background .15s; }
+  .btn:hover { border-color: var(--ink-4); }
+  .btn.primary { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+  .btn.primary:hover { background: var(--ink-2); }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .counter { font-size: 13px; color: var(--ink-3); min-width: 44px; text-align: center; }
+  .home { font-size: 13px; color: var(--ink-3); text-decoration: none; padding: 6px 8px; border-radius: 8px; }
+  .home:hover { color: var(--ink); background: rgba(255,255,255,0.5); }
+
+  /* Stage */
+  .stage { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 14px; min-height: 0; }
+  @media (max-width: 1180px) { .stage { grid-template-columns: 1fr; grid-template-rows: minmax(420px, 1fr) auto; } body { overflow: auto; } .app { height: auto; min-height: 100vh; } }
+  .board { position: relative; border-radius: 22px; min-height: 0; overflow: hidden; }
+  .actors { position: relative; z-index: 2; display: grid; gap: 12px; padding: 22px 22px 0; }
+  .actor { border-radius: 16px; padding: 12px 12px 12px; background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow-card); text-align: center; transition: opacity .3s, transform .3s, box-shadow .3s; min-width: 0; }
+  .actor .ic { display: grid; place-items: center; width: 34px; height: 34px; margin: 0 auto 6px; border-radius: 10px; }
+  .actor .ic svg { width: 19px; height: 19px; }
+  .actor .name { font-weight: 750; font-size: 15px; line-height: 20px; overflow-wrap: normal; word-break: normal; }
+  .actors.many .actor .name { font-size: 14px; }
+  .actor .about { font-size: 12px; line-height: 16px; color: var(--ink-3); margin-top: 2px; overflow-wrap: break-word; }
+  .actor.dim { opacity: .42; }
+  .actor.on { box-shadow: var(--shadow-lift); transform: translateY(-1px); }
+  .tone-you .ic { background: var(--accent-soft); color: var(--accent); }
+  .tone-platform .ic { background: var(--watch-soft); color: var(--watch); }
+  .tone-server .ic { background: var(--ok-soft); color: var(--ok); }
+  .tone-person .ic { background: var(--subtle); color: var(--ink-2); }
+  .tone-you.on { border-color: var(--accent-line); } .tone-platform.on { border-color: var(--watch-line); } .tone-server.on { border-color: var(--ok-line); } .tone-person.on { border-color: var(--line-strong); }
+  svg.wires { position: absolute; inset: 0; z-index: 1; overflow: visible; }
+  .lifeline { stroke: var(--line-strong); stroke-width: 1.5; stroke-dasharray: 3 6; }
+  .wire { fill: none; stroke-width: 2.6; stroke-linecap: round; }
+  .wire.main { stroke: var(--ink); }
+  .wire.return { stroke: var(--ink-3); stroke-dasharray: 7 6; stroke-width: 2.2; }
+  .wire.async { stroke: var(--accent); stroke-dasharray: 2 7; stroke-width: 3; }
+  .wlabel { font-size: 15px; font-weight: 650; fill: var(--ink); paint-order: stroke; stroke: var(--halo); stroke-width: 6px; stroke-linejoin: round; }
+  .wlabel.return { fill: var(--ink-2); font-weight: 600; }
+  .badge circle { fill: var(--ink); } .badge text { fill: #fff; font-size: 12px; font-weight: 750; }
+  .badge.return circle { fill: var(--ink-3); } .badge.async circle { fill: var(--accent); }
+  .msg { transition: opacity .2s; }
+  .msg.cold { opacity: .25; }
+  .msg .wire { stroke-dashoffset: 0; }
+  .empty-cast { position: absolute; left: 0; right: 0; bottom: 34px; text-align: center; color: var(--ink-3); font-size: 15px; z-index: 2; }
+
+  /* Explanation panel */
+  .explain { border-radius: 22px; padding: 22px 22px 20px; display: flex; flex-direction: column; min-height: 0; overflow: auto; }
+  .eyebrow { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); }
+  .explain h2 { margin: 6px 0 8px; font-size: 26px; line-height: 32px; letter-spacing: -0.015em; font-weight: 780; }
+  .explain .summary { margin: 0 0 16px; color: var(--ink-2); font-size: 15.5px; line-height: 24px; }
+  .notes { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .note { display: grid; grid-template-columns: 26px 1fr; gap: 10px; padding: 10px 12px; border-radius: 14px; background: var(--card-soft); border: 1px solid var(--line); cursor: default; transition: border-color .15s, background .15s; }
+  .note:hover, .note.hot { border-color: var(--line-strong); background: var(--surface); }
+  .note .num { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 8px; background: var(--ink); color: #fff; font-size: 12px; font-weight: 750; margin-top: 1px; }
+  .note.return .num { background: var(--ink-3); } .note.async .num { background: var(--accent); }
+  .note .what { font-weight: 700; font-size: 15px; }
+  .note .why { color: var(--ink-2); font-size: 14px; line-height: 21px; margin-top: 2px; }
+  .note .file { font-family: "JetBrains Mono", ui-monospace, Consolas, monospace; font-size: 12px; color: var(--accent); margin-top: 4px; overflow-wrap: anywhere; }
+  .oneliner { margin-top: 14px; padding: 12px 14px; border-radius: 14px; background: var(--watch-soft); border: 1px solid var(--watch-line); color: var(--watch-ink); font-size: 14.5px; line-height: 21px; }
+  .oneliner b { color: var(--watch-ink-strong); }
+  .legend { margin-top: auto; padding-top: 16px; display: flex; flex-wrap: wrap; gap: 14px; font-size: 12.5px; color: var(--ink-3); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { display: inline-block; width: 26px; height: 0; border-top: 2.6px solid var(--ink); }
+  .legend i.r { border-top: 2.2px dashed var(--ink-3); } .legend i.a { border-top: 3px dotted var(--accent); }
+  .keys { font-size: 12px; color: var(--ink-4); margin-top: 8px; }
+
+  /* Level 2: code peek */
+  .stage.wide { grid-template-columns: minmax(0, 1fr) clamp(440px, 42vw, 640px); }
+  .note.has-code { cursor: pointer; }
+  .note .chip { display: inline-block; margin-left: 8px; padding: 0 7px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); font: 600 11px/18px "JetBrains Mono", ui-monospace, Consolas, monospace; vertical-align: 1px; }
+  .note.sel { border-color: var(--accent); background: var(--surface); box-shadow: var(--shadow-card); }
+  .note.sel .chip { background: var(--accent); color: #fff; }
+  .peek { grid-column: 1 / -1; margin-top: 6px; border-radius: 12px; border: 1px solid var(--line-strong); background: var(--code-bg); overflow: hidden; cursor: auto; }
+  .peek .head { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-bottom: 1px solid var(--line); background: var(--subtle); }
+  .peek .path { flex: 1; min-width: 0; font: 500 12px/16px "JetBrains Mono", ui-monospace, Consolas, monospace; color: var(--ink-2); overflow-wrap: anywhere; }
+  .peek .path b { color: var(--ink); font-weight: 600; }
+  .peek .path .ref { color: var(--ink-4); }
+  .peek .open { flex: 0 0 auto; font-size: 12.5px; font-weight: 650; color: var(--accent); text-decoration: none; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--accent-line); background: var(--surface); white-space: nowrap; }
+  .peek .open:hover { border-color: var(--accent); }
+  .peek .code { overflow-x: auto; padding: 6px 0 8px; font: 12.5px/20px "JetBrains Mono", ui-monospace, Consolas, monospace; }
+  .peek .row { display: grid; grid-template-columns: 48px max-content; width: max-content; min-width: 100%; }
+  .peek .ln { text-align: right; padding-right: 14px; color: var(--ink-4); user-select: none; }
+  .peek .src { white-space: pre; padding-right: 18px; color: var(--ink-2); }
+  .peek .row.focus { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+  .peek .row.focus .ln { color: var(--accent); font-weight: 600; }
+  .peek .row.focus .src { color: var(--ink); }
+  .peek .anno { position: sticky; left: 0; padding: 2px 14px 8px 48px; font: 13px/19px "Public Sans", system-ui, sans-serif; }
+  .peek .anno span { display: inline-block; padding: 4px 9px; border-radius: 8px; background: var(--watch-soft); border: 1px solid var(--watch-line); color: var(--watch-ink); }
+  .peek .anno span::before { content: "↑ "; color: var(--watch); font-weight: 700; }
+  .msg.has-code { cursor: pointer; }
+
+  /* Files dropdown: the files the flow uses, in order, grouped by step */
+  .files-pop { position: fixed; z-index: 30; width: 340px; max-height: min(70vh, 640px); overflow: auto; padding: 14px 12px 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line-strong); box-shadow: var(--shadow-lift); }
+  .files-pop[hidden] { display: none; }
+  .files-pop h3 { margin: 0 6px 4px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+  .files-pop .hint { margin: 0 6px 10px; font-size: 12.5px; line-height: 18px; color: var(--ink-3); }
+  .fgroup { padding: 8px 6px 6px; border-radius: 12px; }
+  .fgroup + .fgroup { margin-top: 4px; }
+  .fgroup.cur { background: var(--accent-soft); }
+  .fstep { margin: 0 6px 4px; font-size: 12px; font-weight: 650; color: var(--ink-3); }
+  .fgroup.cur .fstep { color: var(--accent); }
+  .ffile { display: block; width: 100%; padding: 3px 8px; border: 0; border-radius: 8px; background: transparent; text-align: left; cursor: pointer; font: 500 13px/20px "JetBrains Mono", ui-monospace, Consolas, monospace; color: var(--ink); }
+  .ffile:hover { background: var(--subtle); }
+  .ffile.no-code { cursor: default; color: var(--ink-2); }
+  .ffile.no-code:hover { background: transparent; }
+  .fdown { padding-left: 16px; font-size: 12px; line-height: 13px; color: var(--ink-4); user-select: none; }
+  #filesBtn[aria-expanded="true"] { border-color: var(--ink-3); }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<div class="ambient" aria-hidden="true"></div>
+<div class="app">
+  <header class="bar glass">
+    <div class="titles"><h1 id="title"></h1><p class="sub" id="subtitle"></p></div>
+    <nav class="steps" id="steps" aria-label="Steps"></nav>
+    <div class="ctl">
+      <button class="btn" id="filesBtn" aria-expanded="false" aria-controls="filesPop" title="Files in the order the flow uses them (F)">Files ▾</button>
+      <button class="btn" id="prev" aria-label="Previous step">←</button>
+      <span class="counter" id="counter"></span>
+      <button class="btn primary" id="next">Next →</button>
+    </div>
+  </header>
+  <div class="files-pop" id="filesPop" role="dialog" aria-label="Files in order" hidden></div>
+  <main class="stage">
+    <section class="board glass" id="board" aria-label="Diagram">
+      <div class="actors" id="actors"></div>
+      <svg class="wires" id="wires" aria-hidden="true"></svg>
+    </section>
+    <aside class="explain glass" id="explain" aria-live="polite"></aside>
+  </main>
+</div>
+<script>
+window.EXPLAINER = {"title":"One HTTP call, tap to screen","subtitle":"A NETWORK CTA traced through our real code, as it runs in BondScanner (ultra differences noted). Lines from commit 8765b81a.","theme":"bonds","repo":"D:/Flutter/mobile_apps","ref":"8765b81a","actors":[{"id":"user","name":"User","about":"taps a button","icon":"person","tone":"person","explain":"Taps something on screen. That widget carries a NETWORK CTA from the BFF JSON: 'call this path, then show what comes back'."},{"id":"cta","name":"CtaService","about":"Dart · the dispatcher","icon":"route","tone":"you","explain":"Receives every tap's CTA and decides what to do with it. For a NETWORK CTA it asks NetworkService to fetch, then shows the result.","file":"cta_service.dart:102-134, 404-414"},{"id":"net","name":"NetworkService","about":"Dart · builds requests","icon":"app","tone":"you","explain":"Our wrapper around Dio. Turns a CTA into a request (path, method, JSON body), and wraps it in retries.","file":"network_service.dart:38-120"},{"id":"chain","name":"Interceptors","about":"Dio · checkpoints","icon":"key","tone":"you","explain":"A row of checkpoints every request passes on the way out and every response passes on the way back. Like OkHttp interceptors. Ours: Headers, Log, Auth, Performance.","file":"network_service.dart:44-53"},{"id":"adapter","name":"Adapter","about":"the engine · Cronet","icon":"os","tone":"platform","explain":"The part that actually opens the connection and moves bytes. Bonds on Android: Cronet (Chrome's engine, HTTP/3). Ultra: Dart's default dart:io engine (HTTP/1.1).","file":"services_injector.dart:33-63, native_http_adapter.dart:22-56"},{"id":"bff","name":"BFF","about":"our backend","icon":"server","tone":"server","explain":"'Backend for frontend'. Answers with JSON that describes a whole screen: its screenType plus all its data."},{"id":"builder","name":"ScreenBuilder","about":"Dart · JSON → screen","icon":"inbox","tone":"you","explain":"Reads screenType from the JSON, picks the matching Screen class, and parses the JSON into its Freezed model on a background isolate.","file":"screen_builder.dart:23-72, 135-157"}],"steps":[{"short":"The cast","title":"Who's who in one HTTP call","summary":"Seven players. The request goes left to right (tap → CtaService → NetworkService → Interceptors → Adapter → BFF) and the response comes back right to left, ending in ScreenBuilder.","oneliner":"Dio is the car body, the interceptors are checkpoints, the adapter is the engine.","boardHint":"Press Next → to follow one tap."},{"short":"Tap","title":"The tap becomes a request","summary":"CtaService sees a NETWORK CTA and calls NetworkService.fetchRequest. NetworkService fills in a RequestOptions: path, method, base URL, and a JSON body built from the CTA's payload plus any form input.","oneliner":"A CTA is just data saying 'call this path'. NetworkService turns it into a real request.","messages":[{"from":"user","to":"cta","label":"onCall(NetworkCta)","kind":"main","why":"Every tappable thing in our server-driven UI hands its CTA to CtaService.onCall. A big switch on the CTA's type picks the behaviour; NETWORK means 'fetch, then show'.","file":"cta_service.dart:102-104","code":{"path":"packages/services/lib/src/cta/cta_service.dart","from":102,"to":110,"focus":[102,104],"notes":{"102":"Dart's pattern-matching switch, like Kotlin's `when (cta) { is NetworkCta -> … }`.","104":"Hands off the fetch and waits for the response."},"ref":"8765b81a","name":"cta_service.dart","lines":[{"n":102,"t":"      case NetworkCta():"},{"n":103,"t":"        if (cta.navigationStyle == NavigationStyle.NONE) {"},{"n":104,"t":"          final response = await _makeFetchRequest(cta, inputData);"},{"n":105,"t":""},{"n":106,"t":"          /// A re-auth flow owns the navigation stack;"},{"n":107,"t":"          /// this response is superseded."},{"n":108,"t":"          if (response.isHandledByAuthFlow) return;"},{"n":109,"t":""},{"n":110,"t":"          if (response.isCtaResponse) {"}],"open":"vscode://file/D:/Flutter/mobile_apps/packages/services/lib/src/cta/cta_service.dart:102"}},{"from":"cta","to":"net","label":"fetchRequest(cta, inputData)","kind":"main","why":"CtaService doesn't know anything about HTTP. It delegates to NetworkService, the one class that owns Dio.","file":"cta_service.dart:404-414","code":{"path":"packages/services/lib/src/cta/cta_service.dart","from":404,"to":414,"focus":[409],"notes":{"409":"The handoff from 'what the user wants' to 'how HTTP works'."},"ref":"8765b81a","name":"cta_service.dart","lines":[{"n":404,"t":"  Future<Response?> _makeFetchRequest("},{"n":405,"t":"    NetworkCta cta,"},{"n":406,"t":"    InputData? inputData, {"},{"n":407,"t":"    CancelToken? cancelToken,"},{"n":408,"t":"  }) async {"},{"n":409,"t":"    return _networkService.fetchRequest("},{"n":410,"t":"      cta,"},{"n":411,"t":"      inputData: inputData,"},{"n":412,"t":"      cancelToken: cancelToken,"},{"n":413,"t":"    );"},{"n":414,"t":"  }"}],"open":"vscode://file/D:/Flutter/mobile_apps/packages/services/lib/src/cta/cta_service.dart:409"}},{"from":"net","to":"net","label":"build RequestOptions","kind":"main","why":"RequestOptions is Dio's description of one request (like an OkHttp Request.Builder result). Note the method goes through _resolveMethod, and the call is wrapped in retry().","file":"network_service.dart:96-116","code":{"path":"packages/services/lib/src/network/network_service.dart","from":96,"to":116,"focus":[99,106,110],"notes":{"99":"The method isn't used as-is. In bonds, GET becomes POST (next code peek).","106":"The JSON body: the CTA's requestPayload merged with whatever the user typed (inputData).","110":"_dio.fetch(request) starts the trip through the interceptors. retry() re-runs it if the response isn't valid."},"ref":"8765b81a","name":"network_service.dart","lines":[{"n":96,"t":"    try {"},{"n":97,"t":"      final request = RequestOptions("},{"n":98,"t":"        path: cta.path,"},{"n":99,"t":"        method: _resolveMethod(cta.method),"},{"n":100,"t":"        baseUrl: _dio.options.baseUrl,"},{"n":101,"t":"        validateStatus: _validateStatus,"},{"n":102,"t":"        cancelToken: cancelToken,"},{"n":103,"t":"        extra: traceAttributes == null"},{"n":104,"t":"            ? null"},{"n":105,"t":"            : {perfAttributesKey: traceAttributes},"},{"n":106,"t":"        data: _generateRequestData(cta.requestPayload, inputData: inputData),"},{"n":107,"t":"      );"},{"n":108,"t":""},{"n":109,"t":"      return await retry("},{"n":110,"t":"        () => _dio.fetch(request),"},{"n":111,"t":"        maxAttempts: maxRetries ?? cta.maxRetries,"},{"n":112,"t":"        validator: (response) => response.isValidResponse,"},{"n":113,"t":"        onRetryAttempt: (attempt) {"},{"n":114,"t":"          if (attempt > 2) _toastController.showRetryLoader();"},{"n":115,"t":"        },"},{"n":116,"t":"      );"}],"open":"vscode://file/D:/Flutter/mobile_apps/packages/services/lib/src/network/network_service.dart:99"}},{"from":"net","to":"net","label":"_resolveMethod: GET → POST (bonds)","kind":"main","why":"Native engines (Cronet / NSURLSession) refuse a GET that carries a body, and ours always carry a JSON body. So bonds sends POST instead. Ultra uses the default engine, which doesn't care, so it keeps real GETs.","file":"network_service.dart:72-78","code":{"path":"packages/services/lib/src/network/network_service.dart","from":68,"to":78,"focus":[73,75],"notes":{"73":"Ultra: keep the method. Another place where the shared package checks which app it's in.","75":"Bonds: GET/HEAD become POST, a side effect of using the native adapter."},"ref":"8765b81a","name":"network_service.dart","lines":[{"n":68,"t":"  /// Resolves the HTTP method for a request."},{"n":69,"t":"  ///"},{"n":70,"t":"  /// Native networking stacks (Cronet / NSURLSession) reject a request body on"},{"n":71,"t":"  /// a GET/HEAD request, and every request built here carries a JSON body."},{"n":72,"t":"  String _resolveMethod(MethodType method) {"},{"n":73,"t":"    if (Services.isUltraApp) return method.name;"},{"n":74,"t":"    if (method == MethodType.GET || method == MethodType.HEAD) {"},{"n":75,"t":"      return MethodType.POST.name;"},{"n":76,"t":"    }"},{"n":77,"t":"    return method.name;"},{"n":78,"t":"  }"}],"open":"vscode://file/D:/Flutter/mobile_apps/packages/services/lib/src/network/network_service.dart:73"}}]},{"short":"Out","title":"Out through the interceptors","summary":"Dio passes the request through each interceptor's onRequest, in the order they were added. Headers stamps on the device info and the auth token, Log records it. Each one must call the handler to pass the request along.","oneliner":"Interceptors are checkpoints: each one can read or change the request, then waves it on.","messages":[{"from":"net","to":"chain","label":"interceptors (set once in init)","kind":"main","why":"New term: interceptor. A class with onRequest / onResponse / onError hooks that Dio calls for every request, exactly like an OkHttp Interceptor. They're attached once, when NetworkService is created.","file":"network_service.dart:38-53","code":{"path":"packages/services/lib/src/network/network_service.dart","from":38,"to":53,"focus":[44,52],"notes":{"44":"The order here is the order a request visits them.","52":"Debug builds only: can replace a real response with a mock one."},"ref":"8765b81a","name":"network_service.dart","lines":[{"n":38,"t":"  @PostConstruct()"},{"n":39,"t":"  void init() {"},{"n":40,"t":"    /// Set the base URL for the Dio instance."},{"n":41,"t":"    _dio.options.baseUrl = _environmentConfig.baseUrl;"},{"n":42,"t":""},{"n":43,"t":"    /// Add interceptors to the Dio instance."},{"n":44,"t":"    _dio.interceptors.addAll(["},{"n":45,"t":"      HeadersInterceptor("},{"n":46,"t":"        appConfig: _appConfig,"},{"n":47,"t":"        preferenceService: _preferenceService,"},{"n":48,"t":"      ),"},{"n":49,"t":"      const NetworkLogInterceptor(),"},{"n":50,"t":"      const AuthInterceptor(),"},{"n":51,"t":"      _performanceService.createNetworkInterceptor(),"},{"n":52,"t":"      if (kDebugMode) const ResponseMockInterceptor(),"},{"n":53,"t":"    ]);"}],"open":"vscode://file/D:/Flutter/mobile_apps/packages/services/lib/src/network/network_service.dart:44"}},{"from":"chain","to":"chain","label":"Headers: X-App-Id, auth token…","kind":"main","why":"So that no screen ever has to remember headers. Every request gets the app id, a fresh request id, device info, and (if logged in) the auth token and session id from storage.","file":"headers_interceptor.dart:86-133","code":{"path":"packages/services/lib/src/network/interceptors/headers_interceptor.dart","from":86,"to":113,"focus":[94,95,112],"notes":{"94":"X-App-Id: tells the BFF which app is calling (bonds and ultra share the codebase).","95":"A new UUID per request, handy for matching our logs with backend logs.","112":"The auth token saved from an earlier response (see the 'Back' step)."},"ref":"8765b81a","name":"headers_interceptor.dart","lines":[{"n":86,"t":"  void onRequest(RequestOptions options, RequestInterceptorHandler handler) {"},{"n":87,"t":"    final config = _appConfig;"},{"n":88,"t":"    final sessionId = _preferenceService.getSessionId();"},{"n":89,"t":"    final authToken = _preferenceService.getAuthToken();"},{"n":90,"t":"    final cookies = _preferenceService.getCookies();"},{"n":91,"t":"    final attributionPayload = _preferenceService.getAttributionPayload();"},{"n":92,"t":""},{"n":93,"t":"    options.headers['content-type'] = 'application/json';"},{"n":94,"t":"    options.headers[_HeadersKey.appId.headerName] = config.appId;"},{"n":95,"t":"    options.headers[_HeadersKey.requestId.headerName] = UUID.generate();"},{"n":96,"t":"    options.headers[_HeadersKey.osType.headerName] = config.osType;"},{"n":97,"t":"    options.headers[_HeadersKey.osVersion.headerName] = config.osVersion;"},{"n":98,"t":"    options.headers[_HeadersKey.deviceId.headerName] = config.deviceId;"},{"n":99,"t":"    options.headers[_HeadersKey.deviceModel.headerName] = config.deviceModel;"},{"n":100,"t":"    options.headers[_HeadersKey.deviceBrand.headerName] = config.deviceBrand;"},{"n":101,"t":"    options.headers[_HeadersKey.appVersionCode.headerName] ="},{"n":102,"t":"        config.appVersionCode;"},{"n":103,"t":"    options.headers[_HeadersKey.clientType.headerName] = config.clientType;"},{"n":104,"t":"    options.headers[_HeadersKey.platform.headerName] = 'MOBILE_APP';"},{"n":105,"t":"    options.headers[_HeadersKey.deviceType.headerName] = 'DEVICE_TYPE_MOBILE';"},{"n":106,"t":"    options.headers[_HeadersKey.logicalHeight.headerName] = config.logicalHeight"},{"n":107,"t":"        .toString();"},{"n":108,"t":""},{"n":109,"t":"    /// Set the authorization token if available"},{"n":110,"t":"    if (authToken.isNotNullOrEmpty) {"},{"n":111,"t":"      const headerKey = String.fromEnvironment('X_AUTH_HEADER_NAME');"},{"n":112,"t":"      options.headers[headerKey] = authToken;"},{"n":113,"t":"    }"}],"open":"vscode://file/D:/Flutter/mobile_apps/packages/services/lib/src/network/interceptors/headers_interceptor.dart:94"}},{"from":"chain","to":"chain","label":"Log: print + diagnostic screen","kind":"main","why":"Gives the request an id, logs it to the console, and records it for the in-app diagnostic screen. Line 25 is the important habit: always hand the request on.","file":"network_log_interceptor.dart:13-26","code":{"path":"packages/services/lib/src/network/interceptors/network_log_interceptor.dart","from":12,"to":26,"focus":[14,25],"notes":{"14":"Stores an id in options.extra, a per-request scratchpad, so onResponse can find the matching entry.","25":"Passes the request to the next checkpoint. Forget this and the request hangs forever."},"ref":"8765b81a","name":"network_log_interceptor.dart","lines":[{"n":12,"t":"  @override"},{"n":13,"t":"  void onRequest(RequestOptions options, RequestInterceptorHandler handler) {"},{"n":14,"t":"    final id = options.extra['id'] = UUID.generate();"},{"n":15,"t":""},{"n":16,"t":"    getIt<DiagnosticLogger>().logNetworkRequest("},{"n":17,"t":"      id: id,"},{"n":18,"t":"      data: options.data,"},{"n":19,"t":"      method: options.method,"},{"n":20,"t":"      headers: options.headers,"},{"n":21,"t":"      url: options.baseUrl + options.path,"},{"n":22,"t":"    );"},{"n":23,"t":""},{"n":24,"t":"    Logger.log(name: _name, options.requestInfo);"},{"n":25,"t":"    super.onRequest(options, handler);"},{"n":26,"t":"  }"}],"open":"vscode://file/D:/Flutter/mobile_apps/packages/services/lib/src/network/interceptors/network_log_interceptor.dart:14"}}]},{"short":"Engine","title":"The adapter puts it on the wire","summary":"After the last interceptor, Dio calls httpClientAdapter.fetch(). Which engine that is was decided once, when Dio was created: in bonds on Android it's Cronet (HTTP/3 if the server supports it), in ultra it's the default dart:io engine.","oneliner":"Same car body, different engine. The engine is chosen once, at startup.","messages":[{"from":"chain","to":"adapter","label":"adapter.fetch(options)","kind":"main","why":"Dio never opens sockets itself. It hands the finished request to whatever adapter it was given. That swap point is what the separation task is about.","file":"services_injector.dart:33-46","code":{"path":"packages/services/lib/di/services_injector.dart","from":27,"to":46,"focus":[33,36,39],"notes":{"33":"The kill switch: a Firebase Remote Config flag, default true.","36":"The 'off in ultra' check. Ultra never enters this block, so its Dio keeps the default engine. But the code below still ships in ultra.","39":"Bonds: swap Dio's engine for the native one."},"ref":"8765b81a","name":"services_injector.dart","lines":[{"n":27,"t":"    final dio = Dio();"},{"n":28,"t":""},{"n":29,"t":"    /// Route requests through the platform-native networking stack"},{"n":30,"t":"    /// (Cronet on Android, NSURLSession on iOS) to enable HTTP/2 and HTTP/3."},{"n":31,"t":"    /// Gated behind a Remote Config flag (kill-switch) and skipped on web,"},{"n":32,"t":"    /// which the native adapter does not support."},{"n":33,"t":"    final useNativeAdapter = remoteConfig.getBool("},{"n":34,"t":"      RemoteConfigKeys.enableNativeHttpAdapter.name,"},{"n":35,"t":"    );"},{"n":36,"t":"    if (!kIsWeb && useNativeAdapter && Services.isBondsApp) {"},{"n":37,"t":"      /// Same as native_dio_adapter's `NativeAdapter`, plus the negotiated"},{"n":38,"t":"      /// protocol surfaced as a response header for the diagnostic screen."},{"n":39,"t":"      dio.httpClientAdapter = buildNativeHttpAdapter("},{"n":40,"t":"        urls: ["},{"n":41,"t":"          environmentConfig.baseUrl,"},{"n":42,"t":"          environmentConfig.assetsUrl,"},{"n":43,"t":"          // Base URL picked in the debug config chooser (e.g. preview),"},{"n":44,"t":"          // which overrides the env one at runtime."},{"n":45,"t":"          ?preferenceService.getBaseUrl(),"},{"n":46,"t":"        ],"}],"open":"vscode://file/D:/Flutter/mobile_apps/packages/services/lib/di/services_injector.dart:33"}},{"from":"adapter","to":"adapter","label":"pick engine by platform","kind":"main","why":"Android gets Cronet with QUIC (HTTP/3) and Brotli turned on, iOS gets Apple's NSURLSession, anything else gets the plain default.","file":"native_http_adapter.dart:26-55","code":{"path":"packages/services/lib/src/network/adapters/native_http_adapter.dart","from":26,"to":55,"focus":[27,37,51],"notes":{"27":"Lazy: Cronet isn't started yet, only on the first real request.","37":"QUIC = the transport under HTTP/3. Runs over UDP and survives Wi-Fi → 4G switches.","51":"iOS: Apple's own stack, which picks HTTP/2 or 3 by itself."},"ref":"8765b81a","name":"native_http_adapter.dart","lines":[{"n":26,"t":"  if (Platform.isAndroid) {"},{"n":27,"t":"    return _LazyCronetAdapter("},{"n":28,"t":"      /// Android only: build a QUIC-enabled Cronet engine and hint the BFF"},{"n":29,"t":"      /// host(s) so Cronet attempts HTTP/3 on the first request — a default"},{"n":30,"t":"      /// engine has no hint and stays on HTTP/2 for these short-lived calls."},{"n":31,"t":"      /// iOS/NSURLSession negotiates HTTP/3 from `Alt-Svc` on its own."},{"n":32,"t":"      ///"},{"n":33,"t":"      /// Built on the first request, inside the adapter's try/catch, so a"},{"n":34,"t":"      /// start-up failure reaches the fallback instead of breaking DI."},{"n":35,"t":"      createCronetEngine: () {"},{"n":36,"t":"        final engine = CronetEngine.build("},{"n":37,"t":"          enableQuic: true,"},{"n":38,"t":"          // Advertise + decode Brotli so responses use br when the server"},{"n":39,"t":"          // supports it (gzip otherwise). Off by default in Cronet; iOS"},{"n":40,"t":"          // (NSURLSession) already does this on its own."},{"n":41,"t":"          enableBrotli: true,"},{"n":42,"t":"          quicHints: _quicHints(urls),"},{"n":43,"t":"        );"},{"n":44,"t":"        if (kDebugMode) _captureNetLog(engine);"},{"n":45,"t":"        return engine;"},{"n":46,"t":"      },"},{"n":47,"t":"      createFallbackAdapter: createFallbackAdapter,"},{"n":48,"t":"    );"},{"n":49,"t":"  }"},{"n":50,"t":"  if (Platform.isIOS || Platform.isMacOS) {"},{"n":51,"t":"    return CupertinoAdapter("},{"n":52,"t":"      URLSessionConfiguration.defaultSessionConfiguration(),"},{"n":53,"t":"    );"},{"n":54,"t":"  }"},{"n":55,"t":"  return HttpClientAdapter();"}],"open":"vscode://file/D:/Flutter/mobile_apps/packages/services/lib/src/network/adapters/native_http_adapter.dart:27"}},{"from":"adapter","to":"bff","label":"bytes over HTTP/3 (or 2, or 1.1)","kind":"main","why":"On the first request Cronet starts. If it can't start (say, an old device), the code quietly falls back to the default engine and logs a Crashlytics non-fatal, so the user still gets the screen.","file":"native_http_adapter.dart:119-132","code":{"path":"packages/services/lib/src/network/adapters/native_http_adapter.dart","from":105,"to":132,"focus":[109,123,131],"notes":{"109":"Every request goes to whichever engine _select() picked.","123":"First request only: actually start Cronet.","131":"Cronet failed to start → use the fallback (plain engine + Crashlytics log) from now on."},"ref":"8765b81a","name":"native_http_adapter.dart","lines":[{"n":105,"t":"  Future<ResponseBody> fetch("},{"n":106,"t":"    RequestOptions options,"},{"n":107,"t":"    Stream<Uint8List>? requestStream,"},{"n":108,"t":"    Future<void>? cancelFuture,"},{"n":109,"t":"  ) => _select().fetch(options, requestStream, cancelFuture);"},{"n":110,"t":""},{"n":111,"t":"  @override"},{"n":112,"t":"  void close({bool force = false}) {"},{"n":113,"t":"    if (_closed) return;"},{"n":114,"t":"    _closed = true;"},{"n":115,"t":"    // Don't start Cronet just to close it if no request was ever made."},{"n":116,"t":"    _selected?.close(force: force);"},{"n":117,"t":"  }"},{"n":118,"t":""},{"n":119,"t":"  HttpClientAdapter _select() {"},{"n":120,"t":"    final selected = _selected;"},{"n":121,"t":"    if (selected != null) return selected;"},{"n":122,"t":"    try {"},{"n":123,"t":"      final client = CronetClient.fromCronetEngine("},{"n":124,"t":"        _createCronetEngine(),"},{"n":125,"t":"        closeEngine: true,"},{"n":126,"t":"      );"},{"n":127,"t":"      return _selected = ConversionLayerAdapter("},{"n":128,"t":"        _ProtocolCapturingClient(client),"},{"n":129,"t":"      );"},{"n":130,"t":"    } catch (error, stackTrace) {"},{"n":131,"t":"      return _selected = _createFallbackAdapter(error, stackTrace);"},{"n":132,"t":"    }"}],"open":"vscode://file/D:/Flutter/mobile_apps/packages/services/lib/src/network/adapters/native_http_adapter.dart:109"}}]},{"short":"Back","title":"The response comes back through the checkpoints","summary":"The BFF replies with JSON. Dio runs each interceptor's onResponse. Headers saves any new auth token and session id, Log records status and protocol (HTTP/3 shows here), and Auth checks for 401 (log out) or 403 (ask for MPIN).","oneliner":"On the way back, interceptors save tokens, log what came back, and catch 'you're logged out'.","messages":[{"from":"bff","to":"adapter","label":"200 + screen JSON","kind":"return","why":"The body is a whole screen described as JSON: a screenType (which screen class) plus its data.","file":"—"},{"from":"adapter","to":"chain","label":"Headers: save auth token","kind":"return","why":"This is how login 'sticks'. The BFF sends the token in a response header, this saves it, and the onRequest you saw earlier attaches it to every later request.","file":"headers_interceptor.dart:53-83","code":{"path":"packages/services/lib/src/network/interceptors/headers_interceptor.dart","from":53,"to":82,"focus":[69,79,82],"notes":{"69":"Saves the auth token into SharedPreferences.","79":"Saves the session id the same way.","82":"Passes the response on to the next checkpoint."},"ref":"8765b81a","name":"headers_interceptor.dart","lines":[{"n":53,"t":"  Future<void> onResponse("},{"n":54,"t":"    Response response,"},{"n":55,"t":"    ResponseInterceptorHandler handler,"},{"n":56,"t":"  ) async {"},{"n":57,"t":"    final userId = response.headers.value("},{"n":58,"t":"      const String.fromEnvironment('X_USER_ID'),"},{"n":59,"t":"    );"},{"n":60,"t":"    final sessionId = response.headers.value("},{"n":61,"t":"      const String.fromEnvironment('X_SESSION_HEADER_NAME'),"},{"n":62,"t":"    );"},{"n":63,"t":"    final authToken = response.headers.value("},{"n":64,"t":"      const String.fromEnvironment('X_AUTH_HEADER_NAME'),"},{"n":65,"t":"    );"},{"n":66,"t":""},{"n":67,"t":"    /// Store the authorization token in the preference for tap & bonds"},{"n":68,"t":"    if (authToken.isNotNullOrEmpty) {"},{"n":69,"t":"      await _preferenceService.setAuthToken(authToken!);"},{"n":70,"t":"    }"},{"n":71,"t":""},{"n":72,"t":"    /// Store UserId in the preference."},{"n":73,"t":"    if (userId.isNotNullOrEmpty) {"},{"n":74,"t":"      await getIt<AuthService>().onUserIdChanged(userId!);"},{"n":75,"t":"    }"},{"n":76,"t":""},{"n":77,"t":"    /// Store the session id in the preference."},{"n":78,"t":"    if (sessionId.isNotNullOrEmpty) {"},{"n":79,"t":"      await _preferenceService.setSessionId(sessionId!);"},{"n":80,"t":"    }"},{"n":81,"t":""},{"n":82,"t":"    super.onResponse(response, handler);"}],"open":"vscode://file/D:/Flutter/mobile_apps/packages/services/lib/src/network/interceptors/headers_interceptor.dart:69"}},{"from":"chain","to":"chain","label":"Log: status + protocol","kind":"return","why":"Logs the response, including which protocol was used. Cronet reports it in a header our adapter adds; that's how the diagnostic screen can show 'HTTP/3'.","file":"network_log_interceptor.dart:29-42, 93-105","code":{"path":"packages/services/lib/src/network/interceptors/network_log_interceptor.dart","from":29,"to":42,"focus":[37],"notes":{"37":"Reads the protocol header Cronet's wrapper added. In ultra (default engine) this is always empty."},"ref":"8765b81a","name":"network_log_interceptor.dart","lines":[{"n":29,"t":"  void onResponse(Response response, ResponseInterceptorHandler handler) {"},{"n":30,"t":"    final requestId = response.requestOptions.extra['id'] as String;"},{"n":31,"t":""},{"n":32,"t":"    getIt<DiagnosticLogger>().logNetworkResponse("},{"n":33,"t":"      id: requestId,"},{"n":34,"t":"      data: response.data,"},{"n":35,"t":"      headers: response.headers.map,"},{"n":36,"t":"      statusCode: response.statusCode,"},{"n":37,"t":"      protocol: response.headers.protocol,"},{"n":38,"t":"    );"},{"n":39,"t":""},{"n":40,"t":"    Logger.log(name: _name, response.responseInfo);"},{"n":41,"t":"    super.onResponse(response, handler);"},{"n":42,"t":"  }"}],"open":"vscode://file/D:/Flutter/mobile_apps/packages/services/lib/src/network/interceptors/network_log_interceptor.dart:37"}},{"from":"chain","to":"chain","label":"Auth: 401 → logout, 403 → MPIN","kind":"return","why":"NetworkService treats 401 and 403 as 'success' (so they arrive here, not as errors). Auth then starts the logout or MPIN flow without waiting, and tags the response so CtaService knows to ignore it.","file":"auth_interceptor.dart:26-31, 49-64","code":{"path":"packages/services/lib/src/network/interceptors/auth_interceptor.dart","from":49,"to":64,"focus":[55,59],"notes":{"55":"401: the session is dead, so log out. unawaited = start it, don't wait for it.","59":"403 with the BFF's MPIN header: ask the user for their PIN."},"ref":"8765b81a","name":"auth_interceptor.dart","lines":[{"n":49,"t":"  bool _handleChallenge(Response<dynamic>? response, String requestPath) {"},{"n":50,"t":"    final authService = getIt<AuthService>();"},{"n":51,"t":""},{"n":52,"t":"    switch (response?.statusCode) {"},{"n":53,"t":"      case 401:"},{"n":54,"t":"        if (!authService.canLogout(requestPath)) return false;"},{"n":55,"t":"        unawaited(authService.logout());"},{"n":56,"t":"      case 403:"},{"n":57,"t":"        if (!_isMpinChallenge(response)) return false;"},{"n":58,"t":"        if (!authService.canShowMpin(requestPath)) return false;"},{"n":59,"t":"        unawaited(authService.showMpin());"},{"n":60,"t":"      default:"},{"n":61,"t":"        return false;"},{"n":62,"t":"    }"},{"n":63,"t":"    return true;"},{"n":64,"t":"  }"}],"open":"vscode://file/D:/Flutter/mobile_apps/packages/services/lib/src/network/interceptors/auth_interceptor.dart:55"}}]},{"short":"Screen","title":"JSON becomes a screen","summary":"Back in CtaService, the response goes to ScreenBuilder. It picks the JSON (or an error screen for bad status codes), finds the Screen class from screenType, parses the model on a background isolate, and CtaService navigates to it.","oneliner":"HTTP's job ends at the JSON. ScreenBuilder turns that JSON into the screen you see.","messages":[{"from":"net","to":"cta","label":"Response","kind":"return","why":"fetchRequest returns the Response (or error.response if Dio threw). CtaService first checks it wasn't taken over by the Auth flow.","file":"cta_service.dart:104-108"},{"from":"cta","to":"builder","label":"buildFromResponse(response)","kind":"main","why":"Status code decides which JSON to use: 2xx uses the body, 426 shows 'please update', anything else shows the general error screen.","file":"screen_builder.dart:135-148","code":{"path":"packages/services/lib/src/screen_factory/screen_builder.dart","from":136,"to":148,"focus":[145,146,147],"notes":{"145":"Success: use the BFF's JSON.","146":"426: the app is too old, so show the upgrade screen.","147":"Anything else: our built-in error screen, never a crash."},"ref":"8765b81a","name":"screen_builder.dart","lines":[{"n":136,"t":"  Map<String, dynamic> getDataMap(DefaultScreens defaultScreens) {"},{"n":137,"t":"    final statusCode = this?.statusCode;"},{"n":138,"t":""},{"n":139,"t":"    if (statusCode == null) {"},{"n":140,"t":"      return defaultScreens.generalErrorScreen;"},{"n":141,"t":"    }"},{"n":142,"t":""},{"n":143,"t":"    try {"},{"n":144,"t":"      return switch (statusCode) {"},{"n":145,"t":"        >= 200 && < 300 => this!.data as Map<String, dynamic>,"},{"n":146,"t":"        426 => defaultScreens.appUpgradeScreen,"},{"n":147,"t":"        _ => defaultScreens.generalErrorScreen,"},{"n":148,"t":"      };"}],"open":"vscode://file/D:/Flutter/mobile_apps/packages/services/lib/src/screen_factory/screen_builder.dart:145"}},{"from":"builder","to":"builder","label":"screenType → Screen, parse on isolate","kind":"main","why":"New term: isolate. A separate Dart worker with its own memory, like running work on a background thread so the UI doesn't stutter. Parsing big JSON there keeps scrolling smooth.","file":"screen_builder.dart:29-48","code":{"path":"packages/services/lib/src/screen_factory/screen_builder.dart","from":29,"to":48,"focus":[34,48],"notes":{"34":"screenType string → the Screen class (ScreenMapper). An unknown type falls back to an error screen.","48":"Freezed fromJson runs on a background isolate."},"ref":"8765b81a","name":"screen_builder.dart","lines":[{"n":29,"t":"    final screenTypeString ="},{"n":30,"t":"        map['screenType'] as String? ??"},{"n":31,"t":"        const ScreenType.generalErrorScreen().name;"},{"n":32,"t":""},{"n":33,"t":"    try {"},{"n":34,"t":"      screen = ScreenMapper.getScreen(ScreenType.fromName(screenTypeString));"},{"n":35,"t":"    } catch (_) {"},{"n":36,"t":"      screen = ScreenMapper.getScreen(const ScreenType.generalErrorScreen());"},{"n":37,"t":"      errorType = _ErrorType.featureNotSupported;"},{"n":38,"t":"    }"},{"n":39,"t":""},{"n":40,"t":"    final dataMap = switch (errorType) {"},{"n":41,"t":"      _ErrorType.none => map,"},{"n":42,"t":"      _ErrorType.generalError => _defaultScreens.generalErrorScreen,"},{"n":43,"t":"      _ErrorType.featureNotSupported =>"},{"n":44,"t":"        _defaultScreens.featureNotSupportedScreen,"},{"n":45,"t":"    };"},{"n":46,"t":""},{"n":47,"t":"    try {"},{"n":48,"t":"      model = await Isolate.run(() => screen.getModel(dataMap));"}],"open":"vscode://file/D:/Flutter/mobile_apps/packages/services/lib/src/screen_factory/screen_builder.dart:34"}},{"from":"cta","to":"user","label":"navigate(screen)","kind":"return","why":"The new screen is pushed. If the response wasn't valid, the retry call is registered so the error screen's Retry button can repeat this whole journey.","file":"cta_service.dart:125-133","code":{"path":"packages/services/lib/src/cta/cta_service.dart","from":125,"to":134,"focus":[126,129,132],"notes":{"126":"ScreenBuilder from the previous arrows.","129":"Show it.","132":"Bad response: remember how to retry."},"ref":"8765b81a","name":"cta_service.dart","lines":[{"n":125,"t":"          } else {"},{"n":126,"t":"            final screen = await _screenBuilder.buildFromResponse(response);"},{"n":127,"t":""},{"n":128,"t":"            final navigationStyle = _getNavigationStyle(screen, cta);"},{"n":129,"t":"            _navigationService.navigate(screen, navigationStyle);"},{"n":130,"t":""},{"n":131,"t":"            if (response.isNotValidResponse) {"},{"n":132,"t":"              _retryController.registerRetryCall(retryCall);"},{"n":133,"t":"            }"},{"n":134,"t":"          }"}],"open":"vscode://file/D:/Flutter/mobile_apps/packages/services/lib/src/cta/cta_service.dart:126"}}]}]};
+</script>
+<script>
+(function () {
+  var D = window.EXPLAINER;
+  document.documentElement.dataset.theme = D.theme || "linen";
+  var $ = function (id) { return document.getElementById(id); };
+  var NS = 'http://www.w3.org/2000/svg';
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var ICONS = {
+    person: '<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    app: '<rect x="6" y="3" width="12" height="18" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 17h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    os: '<rect x="4" y="5" width="16" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 21h6M12 17v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    cloud: '<path d="M7 18a4 4 0 0 1-.5-8 5.5 5.5 0 0 1 10.6 1.5A3.3 3.3 0 0 1 17 18H7Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>',
+    server: '<rect x="4" y="4" width="16" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="4" y="13" width="16" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 7.5h.01M8 16.5h.01" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>',
+    bell: '<path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4l2-2Zm4 4h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>',
+    door: '<path d="M6 21V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17M4 21h16M14 12h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    route: '<circle cx="6" cy="18" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="6" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8.5 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    key: '<circle cx="8" cy="15" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="m11 12 8-8m-3 3 2 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    inbox: '<path d="M4 13h4l2 3h4l2-3h4M5 5h14l1 8v6H4v-6l1-8Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>'
+  };
+
+  document.title = D.title;
+  $('title').textContent = D.title;
+  $('subtitle').textContent = D.subtitle || '';
+
+  var steps = D.steps;
+  var cur = 0;
+  var actorIndex = {};
+  D.actors.forEach(function (a, i) { actorIndex[a.id] = i; });
+
+  // Actor cards
+  var actorsEl = $('actors');
+  if (D.actors.length > 6) actorsEl.classList.add('many');
+  actorsEl.style.gridTemplateColumns = 'repeat(' + D.actors.length + ', minmax(0, 1fr))';
+  D.actors.forEach(function (a) {
+    var card = document.createElement('div');
+    card.className = 'actor tone-' + (a.tone || 'person');
+    card.id = 'actor-' + a.id;
+    card.innerHTML = '<div class="ic"><svg viewBox="0 0 24 24">' + (ICONS[a.icon] || ICONS.app) + '</svg></div>' +
+      '<div class="name"></div><div class="about"></div>';
+    card.querySelector('.name').textContent = a.name.replace(/([a-z])([A-Z])/g, '$1​$2');
+    card.querySelector('.about').textContent = a.about || '';
+    actorsEl.appendChild(card);
+  });
+
+  // Step pills
+  var stepsEl = $('steps');
+  steps.forEach(function (s, i) {
+    var b = document.createElement('button');
+    b.className = 'pill';
+    b.innerHTML = '<span class="n">' + i + '</span>';
+    b.appendChild(document.createTextNode(s.short || s.title));
+    b.addEventListener('click', function () { go(i); });
+    stepsEl.appendChild(b);
+  });
+
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function svg(tag, attrs) { var e = document.createElementNS(NS, tag); for (var k in attrs) e.setAttribute(k, attrs[k]); return e; }
+
+  // Level 2: the code behind one arrow, read from the repo at build time.
+  var sel = -1;
+
+  function renderPeek(code) {
+    var peek = el('div', 'peek');
+    peek.addEventListener('click', function (e) { e.stopPropagation(); });
+    var head = el('div', 'head');
+    var path = el('div', 'path');
+    var dir = code.path.slice(0, code.path.length - code.name.length);
+    path.appendChild(document.createTextNode(dir));
+    path.appendChild(el('b', null, code.name));
+    path.appendChild(document.createTextNode(':' + code.lines[0].n + '-' + code.lines[code.lines.length - 1].n));
+    if (code.ref && code.ref !== 'working') path.appendChild(el('span', 'ref', ' @ ' + code.ref));
+    head.appendChild(path);
+    var open = el('a', 'open', 'Open in VS Code ↗');
+    open.href = code.open;
+    head.appendChild(open);
+    peek.appendChild(head);
+
+    var focus = {};
+    (code.focus || []).forEach(function (n) { focus[n] = 1; });
+    var notes = code.notes || {};
+    var body = el('div', 'code');
+    code.lines.forEach(function (line) {
+      var row = el('div', 'row' + (focus[line.n] ? ' focus' : ''));
+      row.appendChild(el('span', 'ln', String(line.n)));
+      row.appendChild(el('span', 'src', line.t || ' '));
+      body.appendChild(row);
+      if (notes[line.n]) {
+        var anno = el('div', 'anno');
+        anno.appendChild(el('span', null, notes[line.n]));
+        body.appendChild(anno);
+      }
+    });
+    peek.appendChild(body);
+    return peek;
+  }
+
+  function select(k) {
+    var msgs = steps[cur].messages || [];
+    if (k >= 0 && !(msgs[k] && msgs[k].code)) return;
+    sel = k === sel ? -1 : k;
+    document.querySelectorAll('.peek').forEach(function (p) { p.remove(); });
+    document.querySelectorAll('.note').forEach(function (n) { n.classList.toggle('sel', Number(n.dataset.k) === sel); });
+    if (sel >= 0) {
+      var li = document.querySelector('.note[data-k="' + sel + '"]');
+      var peek = renderPeek(msgs[sel].code);
+      li.appendChild(peek);
+      li.scrollIntoView({ block: 'nearest' });
+    }
+    document.querySelector('.stage').classList.toggle('wide', sel >= 0);
+    heat(sel);
+    requestAnimationFrame(function () { drawWires(false); });
+    try { history.replaceState(null, '', '#step=' + cur + (sel >= 0 ? '&code=' + (sel + 1) : '')); } catch (e) {}
+  }
+
+  function renderExplain(s, i) {
+    var box = $('explain');
+    box.innerHTML = '';
+    box.appendChild(el('div', 'eyebrow', i === 0 ? 'Start here' : 'Step ' + i + ' of ' + (steps.length - 1)));
+    box.appendChild(el('h2', null, s.title));
+    if (s.summary) box.appendChild(el('p', 'summary', s.summary));
+    var ol = el('ol', 'notes');
+    var items = s.messages && s.messages.length ? s.messages : null;
+    if (items) {
+      items.forEach(function (m, k) {
+        var li = el('li', 'note ' + (m.kind || 'main') + (m.code ? ' has-code' : ''));
+        li.dataset.k = k;
+        li.appendChild(el('span', 'num', String(k + 1)));
+        var body = el('div');
+        var what = el('div', 'what', m.label);
+        if (m.code) what.appendChild(el('span', 'chip', '</> code'));
+        body.appendChild(what);
+        if (m.why) body.appendChild(el('div', 'why', m.why));
+        if (m.file) body.appendChild(el('div', 'file', m.file));
+        li.appendChild(body);
+        li.addEventListener('mouseenter', function () { heat(k); });
+        li.addEventListener('mouseleave', function () { heat(sel); });
+        if (m.code) li.addEventListener('click', function () { select(k); });
+        ol.appendChild(li);
+      });
+    } else {
+      D.actors.forEach(function (a, k) {
+        var li = el('li', 'note');
+        li.appendChild(el('span', 'num', String(k + 1)));
+        var body = el('div');
+        body.appendChild(el('div', 'what', a.name));
+        body.appendChild(el('div', 'why', a.explain || a.about || ''));
+        if (a.file) body.appendChild(el('div', 'file', a.file));
+        li.appendChild(body);
+        ol.appendChild(li);
+      });
+    }
+    box.appendChild(ol);
+    if (s.oneliner) {
+      var o = el('div', 'oneliner');
+      o.appendChild(el('b', null, 'In one line: '));
+      o.appendChild(document.createTextNode(s.oneliner));
+      box.appendChild(o);
+    }
+    var lg = el('div', 'legend');
+    lg.innerHTML = '<span><i></i>call / send</span><span><i class="r"></i>answer back</span><span><i class="a"></i>happens later, on its own</span>';
+    box.appendChild(lg);
+    var hasCode = (s.messages || []).some(function (m) { return m.code; });
+    box.appendChild(el('div', 'keys', '← → to move between steps · hover a row to find its arrow' +
+      (hasCode ? ' · click a </> row (or its arrow, or press its number) to see the code · Esc closes it' : '')));
+  }
+
+  function heat(k) {
+    var groups = document.querySelectorAll('#wires .msg');
+    groups.forEach(function (g) { g.classList.toggle('cold', k >= 0 && Number(g.dataset.k) !== k); });
+    document.querySelectorAll('.note').forEach(function (n) { n.classList.toggle('hot', Number(n.dataset.k) === k); });
+  }
+
+  function drawWires(animate) {
+    var board = $('board');
+    var wires = $('wires');
+    var W = board.clientWidth, H = board.clientHeight;
+    wires.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    wires.setAttribute('width', W); wires.setAttribute('height', H);
+    wires.innerHTML = '';
+    var defs = svg('defs', {});
+    var css = getComputedStyle(document.documentElement);
+    [['main', css.getPropertyValue('--ink').trim()], ['return', css.getPropertyValue('--ink-3').trim()], ['async', css.getPropertyValue('--accent').trim()]].forEach(function (p) {
+      var mk = svg('marker', { id: 'arr-' + p[0], viewBox: '0 0 10 10', refX: '8.5', refY: '5', markerWidth: '7', markerHeight: '7', orient: 'auto-start-reverse' });
+      mk.appendChild(svg('path', { d: 'M0 0 L10 5 L0 10 z', fill: p[1] }));
+      defs.appendChild(mk);
+    });
+    wires.appendChild(defs);
+
+    var bRect = board.getBoundingClientRect();
+    var xs = [], cardBottom = 0;
+    D.actors.forEach(function (a) {
+      var r = document.getElementById('actor-' + a.id).getBoundingClientRect();
+      xs.push(r.left - bRect.left + r.width / 2);
+      cardBottom = Math.max(cardBottom, r.bottom - bRect.top);
+    });
+    xs.forEach(function (x) { wires.appendChild(svg('line', { x1: x, y1: cardBottom + 6, x2: x, y2: H - 18, class: 'lifeline' })); });
+
+    var s = steps[cur];
+    var msgs = s.messages || [];
+    var active = {};
+    msgs.forEach(function (m) { active[m.from] = 1; active[m.to] = 1; });
+    D.actors.forEach(function (a) {
+      var c = document.getElementById('actor-' + a.id);
+      c.classList.toggle('dim', msgs.length > 0 && !active[a.id]);
+      c.classList.toggle('on', !!active[a.id]);
+    });
+    var old = document.querySelector('.empty-cast'); if (old) old.remove();
+    if (!msgs.length) {
+      var hint = el('div', 'empty-cast', s.boardHint || 'Press Next → to watch the first step.');
+      board.appendChild(hint);
+      return;
+    }
+
+    var top = cardBottom + 56, bottom = H - 36;
+    var gap = Math.min(110, Math.max(58, (bottom - top) / Math.max(1, msgs.length - 1 || 1)));
+    if (msgs.length === 1) gap = 0;
+    var used = gap * (msgs.length - 1);
+    var y0 = top + Math.max(0, ((bottom - top) - used) / 2.6);
+
+    msgs.forEach(function (m, k) {
+      var kind = m.kind || 'main';
+      var x1 = xs[actorIndex[m.from]], x2 = xs[actorIndex[m.to]];
+      var y = y0 + k * gap;
+      var dir = x2 >= x1 ? 1 : -1;
+      var g = svg('g', { class: 'msg' + (m.code ? ' has-code' : '') + (sel >= 0 && sel !== k ? ' cold' : ''), 'data-k': k });
+      var start = x1 + dir * 8, end = x2 - dir * 10;
+      var path = svg('path', { d: 'M' + start + ' ' + y + ' L' + end + ' ' + y, class: 'wire ' + kind, 'marker-end': 'url(#arr-' + kind + ')' });
+      g.appendChild(path);
+      var mid = (x1 + x2) / 2;
+      var label = svg('text', { x: mid, y: y - 17, 'text-anchor': 'middle', class: 'wlabel ' + kind });
+      label.textContent = m.label;
+      g.appendChild(label);
+      var badge = svg('g', { class: 'badge ' + kind, transform: 'translate(' + x1 + ' ' + y + ')' });
+      badge.appendChild(svg('circle', { r: 11 }));
+      var t = svg('text', { 'text-anchor': 'middle', dy: '4' }); t.textContent = String(k + 1);
+      badge.appendChild(t);
+      g.appendChild(badge);
+      g.addEventListener('mouseenter', function () { heat(k); });
+      g.addEventListener('mouseleave', function () { heat(sel); });
+      if (m.code) g.addEventListener('click', function () { select(k); });
+      wires.appendChild(g);
+
+      if (animate && !reduce) {
+        var len = Math.abs(end - start);
+        var dash = kind === 'main' ? '' : path.style.strokeDasharray;
+        g.style.opacity = '0';
+        setTimeout(function () {
+          g.style.transition = 'opacity .25s';
+          g.style.opacity = '1';
+          if (kind === 'main') {
+            path.style.strokeDasharray = len + ' ' + len;
+            path.style.strokeDashoffset = String(len);
+            path.getBoundingClientRect();
+            path.style.transition = 'stroke-dashoffset .5s ease-out';
+            path.style.strokeDashoffset = '0';
+          }
+        }, 120 + k * 380);
+      }
+    });
+  }
+
+  function go(i, fromHash) {
+    cur = Math.max(0, Math.min(steps.length - 1, i));
+    sel = -1;
+    document.querySelector('.stage').classList.remove('wide');
+    stepsEl.querySelectorAll('.pill').forEach(function (p, k) { if (k === cur) p.setAttribute('aria-current', 'step'); else p.removeAttribute('aria-current'); });
+    var active = stepsEl.children[cur]; if (active && active.scrollIntoView) active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    $('prev').disabled = cur === 0;
+    $('next').textContent = cur === steps.length - 1 ? 'Start over ↺' : 'Next →';
+    $('counter').textContent = cur + ' / ' + (steps.length - 1);
+    renderExplain(steps[cur], cur);
+    drawWires(true);
+    if (!fromHash) { try { history.replaceState(null, '', '#step=' + cur); } catch (e) { location.hash = 'step=' + cur; } }
+  }
+
+  // Files dropdown: each step's files, in arrow order, consecutive repeats collapsed.
+  var FILE_RE = /([\w.-]+\.(?:dart|kt|kts|swift|java|xml|gradle|ya?ml|json|plist|m|h))\b/;
+  function fileOf(m) {
+    if (m.code) return m.code.name;
+    var x = FILE_RE.exec(m.file || '');
+    return x ? x[1] : null;
+  }
+  var fileChain = [];
+  steps.forEach(function (s, i) {
+    var files = [];
+    (s.messages || []).forEach(function (m, k) {
+      var name = fileOf(m);
+      if (!name) return;
+      var last = files[files.length - 1];
+      if (last && last.name === name) { if (!last.code && m.code) { last.k = k; last.code = true; } return; }
+      files.push({ name: name, k: k, code: !!m.code });
+    });
+    if (files.length) fileChain.push({ i: i, label: s.short || s.title, files: files });
+  });
+
+  var pop = $('filesPop'), filesBtn = $('filesBtn');
+  function renderFiles() {
+    pop.innerHTML = '';
+    pop.appendChild(el('h3', null, 'Files, in order'));
+    pop.appendChild(el('p', 'hint', 'How the flow hops from file to file. Click one to jump to its step and code.'));
+    fileChain.forEach(function (g) {
+      var box = el('div', 'fgroup' + (g.i === cur ? ' cur' : ''));
+      box.appendChild(el('div', 'fstep', 'Step ' + g.i + ' · ' + g.label));
+      g.files.forEach(function (f, n) {
+        if (n > 0) box.appendChild(el('div', 'fdown', '↓'));
+        var b = el('button', 'ffile' + (f.code ? '' : ' no-code'), f.name);
+        b.type = 'button';
+        b.addEventListener('click', function () {
+          closeFiles();
+          go(g.i);
+          if (f.code) select(f.k);
+        });
+        box.appendChild(b);
+      });
+      pop.appendChild(box);
+    });
+  }
+  function openFiles() {
+    renderFiles();
+    var r = filesBtn.getBoundingClientRect();
+    pop.style.top = (r.bottom + 8) + 'px';
+    pop.style.left = Math.max(12, Math.min(r.right - 340, window.innerWidth - 352)) + 'px';
+    pop.hidden = false;
+    filesBtn.setAttribute('aria-expanded', 'true');
+  }
+  function closeFiles() { pop.hidden = true; filesBtn.setAttribute('aria-expanded', 'false'); }
+  function toggleFiles() { if (pop.hidden) openFiles(); else closeFiles(); }
+  if (!fileChain.length) filesBtn.hidden = true;
+  filesBtn.addEventListener('click', function (e) { e.stopPropagation(); toggleFiles(); });
+  pop.addEventListener('click', function (e) { e.stopPropagation(); });
+  document.addEventListener('click', function () { if (!pop.hidden) closeFiles(); });
+
+  $('prev').addEventListener('click', function () { go(cur - 1); });
+  $('next').addEventListener('click', function () { go(cur === steps.length - 1 ? 0 : cur + 1); });
+  document.addEventListener('keydown', function (e) {
+    if (e.target && /input|textarea/i.test(e.target.tagName)) return;
+    if (e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); go(cur + 1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(cur - 1); }
+    else if (e.key === 'Home') { go(0); }
+    else if (e.key === 'Escape' && !pop.hidden) { closeFiles(); }
+    else if (e.key === 'Escape' && sel >= 0) { select(sel); }
+    else if ((e.key === 'f' || e.key === 'F') && !filesBtn.hidden) { toggleFiles(); }
+    else if (/^[1-9]$/.test(e.key)) { select(Number(e.key) - 1); }
+  });
+  var rt;
+  window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { drawWires(false); }, 120); });
+  var m = /step=(\d+)/.exec(location.hash);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { drawWires(false); });
+  go(m ? Number(m[1]) : 0, true);
+  var c = /code=(\d+)/.exec(location.hash);
+  if (c) select(Number(c[1]) - 1);
+  if (/files=1/.test(location.hash) && !filesBtn.hidden) openFiles();
+})();
+</script>
+</body>
+</html>

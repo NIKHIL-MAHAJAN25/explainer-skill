@@ -1,0 +1,15 @@
+{
+  "title": "One HTTP call, tap to screen",
+  "description": "A button tap travels CtaService → NetworkService → Dio's interceptors → the adapter (Cronet in bonds) → the BFF, then back up the interceptors to ScreenBuilder, which turns the JSON into a screen.",
+  "tags": [
+    "network",
+    "dio",
+    "interceptors",
+    "native-adapter",
+    "explainer",
+    "adapter-task"
+  ],
+  "order": 5,
+  "theme": "bonds",
+  "kind": "flow"
+}

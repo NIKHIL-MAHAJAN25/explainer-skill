@@ -1,0 +1,302 @@
+{
+  "title": "One HTTP call, tap to screen",
+  "subtitle": "A NETWORK CTA traced through our real code, as it runs in BondScanner (ultra differences noted). Lines from commit 8765b81a.",
+  "theme": "bonds",
+  "repo": "D:/Flutter/mobile_apps",
+  "ref": "8765b81a",
+  "meta": {
+    "description": "A button tap travels CtaService → NetworkService → Dio's interceptors → the adapter (Cronet in bonds) → the BFF, then back up the interceptors to ScreenBuilder, which turns the JSON into a screen.",
+    "tags": ["network", "dio", "interceptors", "native-adapter", "explainer", "adapter-task"],
+    "order": 5,
+    "theme": "bonds",
+    "kind": "flow"
+  },
+  "actors": [
+    {
+      "id": "user", "name": "User", "about": "taps a button", "icon": "person", "tone": "person",
+      "explain": "Taps something on screen. That widget carries a NETWORK CTA from the BFF JSON: 'call this path, then show what comes back'."
+    },
+    {
+      "id": "cta", "name": "CtaService", "about": "Dart · the dispatcher", "icon": "route", "tone": "you",
+      "explain": "Receives every tap's CTA and decides what to do with it. For a NETWORK CTA it asks NetworkService to fetch, then shows the result.",
+      "file": "cta_service.dart:102-134, 404-414"
+    },
+    {
+      "id": "net", "name": "NetworkService", "about": "Dart · builds requests", "icon": "app", "tone": "you",
+      "explain": "Our wrapper around Dio. Turns a CTA into a request (path, method, JSON body), and wraps it in retries.",
+      "file": "network_service.dart:38-120"
+    },
+    {
+      "id": "chain", "name": "Interceptors", "about": "Dio · checkpoints", "icon": "key", "tone": "you",
+      "explain": "A row of checkpoints every request passes on the way out and every response passes on the way back. Like OkHttp interceptors. Ours: Headers, Log, Auth, Performance.",
+      "file": "network_service.dart:44-53"
+    },
+    {
+      "id": "adapter", "name": "Adapter", "about": "the engine · Cronet", "icon": "os", "tone": "platform",
+      "explain": "The part that actually opens the connection and moves bytes. Bonds on Android: Cronet (Chrome's engine, HTTP/3). Ultra: Dart's default dart:io engine (HTTP/1.1).",
+      "file": "services_injector.dart:33-63, native_http_adapter.dart:22-56"
+    },
+    {
+      "id": "bff", "name": "BFF", "about": "our backend", "icon": "server", "tone": "server",
+      "explain": "'Backend for frontend'. Answers with JSON that describes a whole screen: its screenType plus all its data."
+    },
+    {
+      "id": "builder", "name": "ScreenBuilder", "about": "Dart · JSON → screen", "icon": "inbox", "tone": "you",
+      "explain": "Reads screenType from the JSON, picks the matching Screen class, and parses the JSON into its Freezed model on a background isolate.",
+      "file": "screen_builder.dart:23-72, 135-157"
+    }
+  ],
+  "steps": [
+    {
+      "short": "The cast",
+      "title": "Who's who in one HTTP call",
+      "summary": "Seven players. The request goes left to right (tap → CtaService → NetworkService → Interceptors → Adapter → BFF) and the response comes back right to left, ending in ScreenBuilder.",
+      "oneliner": "Dio is the car body, the interceptors are checkpoints, the adapter is the engine.",
+      "boardHint": "Press Next → to follow one tap."
+    },
+    {
+      "short": "Tap",
+      "title": "The tap becomes a request",
+      "summary": "CtaService sees a NETWORK CTA and calls NetworkService.fetchRequest. NetworkService fills in a RequestOptions: path, method, base URL, and a JSON body built from the CTA's payload plus any form input.",
+      "oneliner": "A CTA is just data saying 'call this path'. NetworkService turns it into a real request.",
+      "messages": [
+        {
+          "from": "user", "to": "cta", "label": "onCall(NetworkCta)", "kind": "main",
+          "why": "Every tappable thing in our server-driven UI hands its CTA to CtaService.onCall. A big switch on the CTA's type picks the behaviour; NETWORK means 'fetch, then show'.",
+          "file": "cta_service.dart:102-104",
+          "code": {
+            "path": "packages/services/lib/src/cta/cta_service.dart", "from": 102, "to": 110, "focus": [102, 104],
+            "notes": {
+              "102": "Dart's pattern-matching switch, like Kotlin's `when (cta) { is NetworkCta -> … }`.",
+              "104": "Hands off the fetch and waits for the response."
+            }
+          }
+        },
+        {
+          "from": "cta", "to": "net", "label": "fetchRequest(cta, inputData)", "kind": "main",
+          "why": "CtaService doesn't know anything about HTTP. It delegates to NetworkService, the one class that owns Dio.",
+          "file": "cta_service.dart:404-414",
+          "code": {
+            "path": "packages/services/lib/src/cta/cta_service.dart", "from": 404, "to": 414, "focus": [409],
+            "notes": { "409": "The handoff from 'what the user wants' to 'how HTTP works'." }
+          }
+        },
+        {
+          "from": "net", "to": "net", "label": "build RequestOptions", "kind": "main",
+          "why": "RequestOptions is Dio's description of one request (like an OkHttp Request.Builder result). Note the method goes through _resolveMethod, and the call is wrapped in retry().",
+          "file": "network_service.dart:96-116",
+          "code": {
+            "path": "packages/services/lib/src/network/network_service.dart", "from": 96, "to": 116, "focus": [99, 106, 110],
+            "notes": {
+              "99": "The method isn't used as-is. In bonds, GET becomes POST (next code peek).",
+              "106": "The JSON body: the CTA's requestPayload merged with whatever the user typed (inputData).",
+              "110": "_dio.fetch(request) starts the trip through the interceptors. retry() re-runs it if the response isn't valid."
+            }
+          }
+        },
+        {
+          "from": "net", "to": "net", "label": "_resolveMethod: GET → POST (bonds)", "kind": "main",
+          "why": "Native engines (Cronet / NSURLSession) refuse a GET that carries a body, and ours always carry a JSON body. So bonds sends POST instead. Ultra uses the default engine, which doesn't care, so it keeps real GETs.",
+          "file": "network_service.dart:72-78",
+          "code": {
+            "path": "packages/services/lib/src/network/network_service.dart", "from": 68, "to": 78, "focus": [73, 75],
+            "notes": {
+              "73": "Ultra: keep the method. Another place where the shared package checks which app it's in.",
+              "75": "Bonds: GET/HEAD become POST, a side effect of using the native adapter."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "short": "Out",
+      "title": "Out through the interceptors",
+      "summary": "Dio passes the request through each interceptor's onRequest, in the order they were added. Headers stamps on the device info and the auth token, Log records it. Each one must call the handler to pass the request along.",
+      "oneliner": "Interceptors are checkpoints: each one can read or change the request, then waves it on.",
+      "messages": [
+        {
+          "from": "net", "to": "chain", "label": "interceptors (set once in init)", "kind": "main",
+          "why": "New term: interceptor. A class with onRequest / onResponse / onError hooks that Dio calls for every request, exactly like an OkHttp Interceptor. They're attached once, when NetworkService is created.",
+          "file": "network_service.dart:38-53",
+          "code": {
+            "path": "packages/services/lib/src/network/network_service.dart", "from": 38, "to": 53, "focus": [44, 52],
+            "notes": {
+              "44": "The order here is the order a request visits them.",
+              "52": "Debug builds only: can replace a real response with a mock one."
+            }
+          }
+        },
+        {
+          "from": "chain", "to": "chain", "label": "Headers: X-App-Id, auth token…", "kind": "main",
+          "why": "So that no screen ever has to remember headers. Every request gets the app id, a fresh request id, device info, and (if logged in) the auth token and session id from storage.",
+          "file": "headers_interceptor.dart:86-133",
+          "code": {
+            "path": "packages/services/lib/src/network/interceptors/headers_interceptor.dart", "from": 86, "to": 113, "focus": [94, 95, 112],
+            "notes": {
+              "94": "X-App-Id: tells the BFF which app is calling (bonds and ultra share the codebase).",
+              "95": "A new UUID per request, handy for matching our logs with backend logs.",
+              "112": "The auth token saved from an earlier response (see the 'Back' step)."
+            }
+          }
+        },
+        {
+          "from": "chain", "to": "chain", "label": "Log: print + diagnostic screen", "kind": "main",
+          "why": "Gives the request an id, logs it to the console, and records it for the in-app diagnostic screen. Line 25 is the important habit: always hand the request on.",
+          "file": "network_log_interceptor.dart:13-26",
+          "code": {
+            "path": "packages/services/lib/src/network/interceptors/network_log_interceptor.dart", "from": 12, "to": 26, "focus": [14, 25],
+            "notes": {
+              "14": "Stores an id in options.extra, a per-request scratchpad, so onResponse can find the matching entry.",
+              "25": "Passes the request to the next checkpoint. Forget this and the request hangs forever."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "short": "Engine",
+      "title": "The adapter puts it on the wire",
+      "summary": "After the last interceptor, Dio calls httpClientAdapter.fetch(). Which engine that is was decided once, when Dio was created: in bonds on Android it's Cronet (HTTP/3 if the server supports it), in ultra it's the default dart:io engine.",
+      "oneliner": "Same car body, different engine. The engine is chosen once, at startup.",
+      "messages": [
+        {
+          "from": "chain", "to": "adapter", "label": "adapter.fetch(options)", "kind": "main",
+          "why": "Dio never opens sockets itself. It hands the finished request to whatever adapter it was given. That swap point is what the separation task is about.",
+          "file": "services_injector.dart:33-46",
+          "code": {
+            "path": "packages/services/lib/di/services_injector.dart", "from": 27, "to": 46, "focus": [33, 36, 39],
+            "notes": {
+              "33": "The kill switch: a Firebase Remote Config flag, default true.",
+              "36": "The 'off in ultra' check. Ultra never enters this block, so its Dio keeps the default engine. But the code below still ships in ultra.",
+              "39": "Bonds: swap Dio's engine for the native one."
+            }
+          }
+        },
+        {
+          "from": "adapter", "to": "adapter", "label": "pick engine by platform", "kind": "main",
+          "why": "Android gets Cronet with QUIC (HTTP/3) and Brotli turned on, iOS gets Apple's NSURLSession, anything else gets the plain default.",
+          "file": "native_http_adapter.dart:26-55",
+          "code": {
+            "path": "packages/services/lib/src/network/adapters/native_http_adapter.dart", "from": 26, "to": 55, "focus": [27, 37, 51],
+            "notes": {
+              "27": "Lazy: Cronet isn't started yet, only on the first real request.",
+              "37": "QUIC = the transport under HTTP/3. Runs over UDP and survives Wi-Fi → 4G switches.",
+              "51": "iOS: Apple's own stack, which picks HTTP/2 or 3 by itself."
+            }
+          }
+        },
+        {
+          "from": "adapter", "to": "bff", "label": "bytes over HTTP/3 (or 2, or 1.1)", "kind": "main",
+          "why": "On the first request Cronet starts. If it can't start (say, an old device), the code quietly falls back to the default engine and logs a Crashlytics non-fatal, so the user still gets the screen.",
+          "file": "native_http_adapter.dart:119-132",
+          "code": {
+            "path": "packages/services/lib/src/network/adapters/native_http_adapter.dart", "from": 105, "to": 132, "focus": [109, 123, 131],
+            "notes": {
+              "109": "Every request goes to whichever engine _select() picked.",
+              "123": "First request only: actually start Cronet.",
+              "131": "Cronet failed to start → use the fallback (plain engine + Crashlytics log) from now on."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "short": "Back",
+      "title": "The response comes back through the checkpoints",
+      "summary": "The BFF replies with JSON. Dio runs each interceptor's onResponse. Headers saves any new auth token and session id, Log records status and protocol (HTTP/3 shows here), and Auth checks for 401 (log out) or 403 (ask for MPIN).",
+      "oneliner": "On the way back, interceptors save tokens, log what came back, and catch 'you're logged out'.",
+      "messages": [
+        {
+          "from": "bff", "to": "adapter", "label": "200 + screen JSON", "kind": "return",
+          "why": "The body is a whole screen described as JSON: a screenType (which screen class) plus its data.",
+          "file": "—"
+        },
+        {
+          "from": "adapter", "to": "chain", "label": "Headers: save auth token", "kind": "return",
+          "why": "This is how login 'sticks'. The BFF sends the token in a response header, this saves it, and the onRequest you saw earlier attaches it to every later request.",
+          "file": "headers_interceptor.dart:53-83",
+          "code": {
+            "path": "packages/services/lib/src/network/interceptors/headers_interceptor.dart", "from": 53, "to": 82, "focus": [69, 79, 82],
+            "notes": {
+              "69": "Saves the auth token into SharedPreferences.",
+              "79": "Saves the session id the same way.",
+              "82": "Passes the response on to the next checkpoint."
+            }
+          }
+        },
+        {
+          "from": "chain", "to": "chain", "label": "Log: status + protocol", "kind": "return",
+          "why": "Logs the response, including which protocol was used. Cronet reports it in a header our adapter adds; that's how the diagnostic screen can show 'HTTP/3'.",
+          "file": "network_log_interceptor.dart:29-42, 93-105",
+          "code": {
+            "path": "packages/services/lib/src/network/interceptors/network_log_interceptor.dart", "from": 29, "to": 42, "focus": [37],
+            "notes": { "37": "Reads the protocol header Cronet's wrapper added. In ultra (default engine) this is always empty." }
+          }
+        },
+        {
+          "from": "chain", "to": "chain", "label": "Auth: 401 → logout, 403 → MPIN", "kind": "return",
+          "why": "NetworkService treats 401 and 403 as 'success' (so they arrive here, not as errors). Auth then starts the logout or MPIN flow without waiting, and tags the response so CtaService knows to ignore it.",
+          "file": "auth_interceptor.dart:26-31, 49-64",
+          "code": {
+            "path": "packages/services/lib/src/network/interceptors/auth_interceptor.dart", "from": 49, "to": 64, "focus": [55, 59],
+            "notes": {
+              "55": "401: the session is dead, so log out. unawaited = start it, don't wait for it.",
+              "59": "403 with the BFF's MPIN header: ask the user for their PIN."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "short": "Screen",
+      "title": "JSON becomes a screen",
+      "summary": "Back in CtaService, the response goes to ScreenBuilder. It picks the JSON (or an error screen for bad status codes), finds the Screen class from screenType, parses the model on a background isolate, and CtaService navigates to it.",
+      "oneliner": "HTTP's job ends at the JSON. ScreenBuilder turns that JSON into the screen you see.",
+      "messages": [
+        {
+          "from": "net", "to": "cta", "label": "Response", "kind": "return",
+          "why": "fetchRequest returns the Response (or error.response if Dio threw). CtaService first checks it wasn't taken over by the Auth flow.",
+          "file": "cta_service.dart:104-108"
+        },
+        {
+          "from": "cta", "to": "builder", "label": "buildFromResponse(response)", "kind": "main",
+          "why": "Status code decides which JSON to use: 2xx uses the body, 426 shows 'please update', anything else shows the general error screen.",
+          "file": "screen_builder.dart:135-148",
+          "code": {
+            "path": "packages/services/lib/src/screen_factory/screen_builder.dart", "from": 136, "to": 148, "focus": [145, 146, 147],
+            "notes": {
+              "145": "Success: use the BFF's JSON.",
+              "146": "426: the app is too old, so show the upgrade screen.",
+              "147": "Anything else: our built-in error screen, never a crash."
+            }
+          }
+        },
+        {
+          "from": "builder", "to": "builder", "label": "screenType → Screen, parse on isolate", "kind": "main",
+          "why": "New term: isolate. A separate Dart worker with its own memory, like running work on a background thread so the UI doesn't stutter. Parsing big JSON there keeps scrolling smooth.",
+          "file": "screen_builder.dart:29-48",
+          "code": {
+            "path": "packages/services/lib/src/screen_factory/screen_builder.dart", "from": 29, "to": 48, "focus": [34, 48],
+            "notes": {
+              "34": "screenType string → the Screen class (ScreenMapper). An unknown type falls back to an error screen.",
+              "48": "Freezed fromJson runs on a background isolate."
+            }
+          }
+        },
+        {
+          "from": "cta", "to": "user", "label": "navigate(screen)", "kind": "return",
+          "why": "The new screen is pushed. If the response wasn't valid, the retry call is registered so the error screen's Retry button can repeat this whole journey.",
+          "file": "cta_service.dart:125-133",
+          "code": {
+            "path": "packages/services/lib/src/cta/cta_service.dart", "from": 125, "to": 134, "focus": [126, 129, 132],
+            "notes": {
+              "126": "ScreenBuilder from the previous arrows.",
+              "129": "Show it.",
+              "132": "Bad response: remember how to retry."
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

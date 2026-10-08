@@ -1,0 +1,275 @@
+{
+  "title": "R8 · Module 1 — Source to bytecode",
+  "subtitle": "What kotlinc turns TapApp.kt into, byte by byte, and why every call is stored as a name written in text. Kotlin from commit 175d6663; the .class is ultra's stagingDebug build (unshrunk, the exact input R8 receives).",
+  "theme": "ultra",
+  "repo": "D:/Flutter/mobile_apps",
+  "ref": "175d6663",
+  "meta": {
+    "description": "Module 1 of the R8 curriculum. Follows ultra's TapApp.kt through the Kotlin compiler into TapApp.class: the file layout, the constant pool (every name stored as text), the stack-machine instructions of onCreate, linking by name at runtime, and the metadata attributes. Ends on the two facts R8 is built around: renaming must be done everywhere at once, and lookups by string are invisible.",
+    "tags": ["lesson", "r8", "bytecode", "jvm", "android-foundations", "r8-curriculum"],
+    "order": 9,
+    "theme": "ultra",
+    "kind": "concept"
+  },
+  "actors": [
+    {
+      "id": "kt", "name": "TapApp.kt", "about": "your Kotlin source", "icon": "app", "tone": "you",
+      "explain": "ultra's Application class: the first of our code to run when the app process starts. 16 lines, written for humans.",
+      "file": "TapApp.kt:1-16"
+    },
+    {
+      "id": "kotlinc", "name": "kotlinc", "about": "the Kotlin compiler", "icon": "route", "tone": "platform",
+      "explain": "A translator. Reads .kt text, checks it, writes .class files. Gradle runs it for you in the compileStagingReleaseKotlin task."
+    },
+    {
+      "id": "cls", "name": "TapApp.class", "about": "1,301 bytes of bytecode", "icon": "inbox", "tone": "you",
+      "explain": "The compiler's output. Not text, not machine code: a compact binary format any JVM-family runtime understands."
+    },
+    {
+      "id": "pool", "name": "Constant pool", "about": "the class's name list", "icon": "key", "tone": "you",
+      "explain": "A numbered list inside the .class holding every name the class mentions (classes, methods, fields), written out as text."
+    },
+    {
+      "id": "manifest", "name": "AndroidManifest.xml", "about": "names TapApp as text", "icon": "door", "tone": "you",
+      "explain": "Tells Android which class to create as the Application, by writing its name as a string: \".TapApp\".",
+      "file": "AndroidManifest.xml:130-131"
+    },
+    {
+      "id": "art", "name": "ART", "about": "Android's runtime", "icon": "os", "tone": "platform",
+      "explain": "The engine on the phone that loads classes and runs their code. It finds classes and methods by looking up their names."
+    },
+    {
+      "id": "measure", "name": "Measure SDK", "about": "sh.measure.android.Measure", "icon": "cloud", "tone": "platform",
+      "explain": "A third-party library class. TapApp calls Measure.init(...) in release builds."
+    },
+    {
+      "id": "r8", "name": "R8", "about": "preview — Module 8", "icon": "server", "tone": "platform",
+      "explain": "The tool that later shrinks and renames all these .class files. This lesson shows what it has to work with."
+    }
+  ],
+  "steps": [
+    {
+      "short": "The cast",
+      "title": "From 16 lines of Kotlin to 1,301 bytes",
+      "summary": "We follow one real file, ultra's TapApp.kt, through the compiler and open the result. Everything R8 does later is an edit to files exactly like this one, so this is the ground floor.",
+      "oneliner": "R8 never sees your Kotlin. It sees .class files. So we learn to read those first.",
+      "boardHint": "Press Next → to compile TapApp.kt."
+    },
+    {
+      "short": "1 · Compile",
+      "title": "The compiler turns text into bytecode",
+      "summary": "kotlinc reads TapApp.kt and writes TapApp.class. The .class holds bytecode: instructions for an imaginary computer called the JVM. Android then converts it again (into DEX, Module 2) before it reaches the phone.",
+      "oneliner": "Source is for humans; bytecode is for runtimes. Same program, different language.",
+      "messages": [
+        {
+          "from": "kt", "to": "kotlinc", "label": "TapApp.kt (text)", "kind": "main",
+          "why": "This is the whole input. Note line 13: MeasureConfig() with no arguments. Kotlin fills in defaults for you, and we'll see what that turns into in the bytecode.",
+          "file": "TapApp.kt:1-16",
+          "code": {
+            "path": "apps/ultra_app/android/app/src/main/kotlin/com/tap/app/TapApp.kt", "from": 1, "to": 16, "focus": [7, 13],
+            "notes": {
+              "7": "A class that extends Android's Application. Android creates exactly one of these when the app process starts.",
+              "9": "Call the parent class's onCreate first.",
+              "10": "Start MoEngage.",
+              "12": "BuildConfig.DEBUG is a constant the build writes for you: true in debug, false in release.",
+              "13": "Release builds only: start Measure with its default settings."
+            }
+          }
+        },
+        {
+          "from": "kotlinc", "to": "cls", "label": "writes TapApp.class", "kind": "main",
+          "why": "New term — bytecode: instructions written for a 'virtual' computer (the JVM) instead of a real CPU. Like Kotlin being turned into a universal recipe card any kitchen can follow. These bytes start with the hex CAFEBABE, the signature every .class file has.",
+          "file": "TapApp.hex.txt:1-4",
+          "code": {
+            "repo": "D:/apk-lab", "path": "module1/TapApp.hex.txt", "from": 1, "to": 8, "focus": [1],
+            "notes": {
+              "1": "cafe babe = the 'magic number': every .class file starts with these 4 bytes. 0000 003d = version 61 (Java 17 format). Then 0044 = 68, the size of the name list (constant pool).",
+              "2": "Right on line 1–2 you can already read 'com/tap/app/TapApp' in plain text. Names are stored as text — the most important fact in this lesson.",
+              "3": "And here 'android/app/Application', the parent class, again as text."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "short": "2 · Layout",
+      "title": "What's inside a .class file",
+      "summary": "Every .class file has the same sections in the same order: magic number, version, constant pool, flags, this class, its parent, interfaces, fields, methods, and attributes. javap (from your JDK) prints them in readable form.",
+      "oneliner": "A .class file is a form with fixed boxes, and most boxes just point at entries in the name list.",
+      "messages": [
+        {
+          "from": "cls", "to": "pool", "label": "this_class #2, super_class #4", "kind": "main",
+          "why": "New term — javap: a JDK tool that decodes a .class into readable text. Notice that 'this class' and 'parent class' are not written directly; they say #2 and #4, meaning 'look at entry 2 and 4 in the name list'.",
+          "file": "TapApp.javap.txt:5-11",
+          "code": {
+            "repo": "D:/apk-lab", "path": "module1/TapApp.javap.txt", "from": 1, "to": 11, "focus": [9, 10],
+            "notes": {
+              "4": "The original file name survives in the .class. Useful for crash reports, and it costs bytes.",
+              "5": "public final: Kotlin classes are final unless you write 'open'.",
+              "7": "61 = Java 17 class format.",
+              "9": "'Who am I?' → entry #2 in the constant pool.",
+              "10": "'Who is my parent?' → entry #4.",
+              "11": "0 fields, 2 methods (the constructor and onCreate), 3 attributes (extra info at the end)."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "short": "3 · Name list",
+      "title": "The constant pool: every name, as text",
+      "summary": "The constant pool is a numbered list. Plain text entries (Utf8) hold the raw strings, and other entries combine them: a Class entry points at a string; a Methodref points at a Class plus a name-and-type. 67 entries for a 16-line class.",
+      "oneliner": "Code never says 'call the thing at memory address X'. It says 'call the method whose name is init, in the class whose name is sh/measure/android/Measure'.",
+      "messages": [
+        {
+          "from": "pool", "to": "pool", "label": "#1 → #2 → #8: names built from text", "kind": "main",
+          "why": "New term — constant pool: the class's own phone book. Entry #8 is 'Application's constructor', built by pointing at #4 (the class) and #7 (name <init> + type ()V). Nothing is a number or address; it's all text underneath.",
+          "file": "TapApp.javap.txt:12-25",
+          "code": {
+            "repo": "D:/apk-lab", "path": "module1/TapApp.javap.txt", "from": 12, "to": 25, "focus": [13, 20],
+            "notes": {
+              "13": "#1 is a raw string: com/tap/app/TapApp. Slashes, not dots — that's the internal spelling.",
+              "14": "#2 says 'this is a class, its name is string #1'.",
+              "17": "<init> is the internal name of every constructor.",
+              "18": "()V is a descriptor: () = no parameters, V = returns void.",
+              "20": "#8 = Application's constructor, assembled from #4 (class) + #7 (name and type).",
+              "25": "#13 = Application.onCreate — what super.onCreate() calls."
+            }
+          }
+        },
+        {
+          "from": "pool", "to": "measure", "label": "#39–#44: Measure.init as text", "kind": "main",
+          "why": "Our call to a third-party SDK is stored the same way: the strings 'sh/measure/android/Measure', 'init', and a descriptor spelling out the parameter types. Line 48 is Kotlin's hidden default-arguments constructor — MeasureConfig() expanded into 9 parameters.",
+          "file": "TapApp.javap.txt:43-56",
+          "code": {
+            "repo": "D:/apk-lab", "path": "module1/TapApp.javap.txt", "from": 43, "to": 56, "focus": [51, 53, 54],
+            "notes": {
+              "43": "BuildConfig.DEBUG, a field. Z = boolean.",
+              "48": "Kotlin's synthetic constructor for default arguments: real params + an int bitmask + a marker. You wrote MeasureConfig(); this is what it really calls.",
+              "51": "The class name, as text.",
+              "53": "The method name, as text.",
+              "54": "Its parameter types, as text: L…; means 'an object of this class'. (Context, MeasureConfig) → V (void).",
+              "56": "#44 ties them together: 'Measure.init(Context, MeasureConfig)'."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "short": "4 · Instructions",
+      "title": "onCreate in bytecode: a stack machine",
+      "summary": "The JVM has no named variables in its instructions. It pushes values onto a stack and each instruction consumes them. aload_0 pushes 'this'; invokevirtual pops the object and arguments and calls. Every call instruction names its target by pool number.",
+      "oneliner": "Kotlin line 13 becomes ~15 instructions, and the only way the code refers to Measure is through pool entries #35, #38 and #44.",
+      "messages": [
+        {
+          "from": "cls", "to": "pool", "label": "invokestatic #44", "kind": "main",
+          "why": "New term — stack machine: like a stack of plates. Instructions put values on top (aload_0, iconst_0, new) and others take them off to use them (invoke…, ifne). The number after an instruction (#13, #44) is a constant-pool entry.",
+          "file": "TapApp.javap.txt:95-123",
+          "code": {
+            "repo": "D:/apk-lab", "path": "module1/TapApp.javap.txt", "from": 99, "to": 123, "focus": [107, 122],
+            "notes": {
+              "100": "Push 'this' onto the stack.",
+              "101": "Kotlin line 9: super.onCreate() — call Application.onCreate (pool #13).",
+              "102": "Kotlin line 10 starts: load the MoEngageManager.Companion object.",
+              "105": "Call MoEngageManager.Companion.initialize(this).",
+              "106": "Kotlin line 12: read BuildConfig.DEBUG.",
+              "107": "ifne 44 = 'if not zero (true), jump to instruction 44 (return)'. That's your if (!DEBUG).",
+              "110": "Kotlin line 13: create a new MeasureConfig object.",
+              "119": "127 = binary 1111111: 'use the default for all 7 optional arguments'.",
+              "121": "Call the hidden default-args constructor (pool #38).",
+              "122": "Measure.init(this, config) — found by the name in pool #44.",
+              "123": "Kotlin line 15: done."
+            }
+          }
+        },
+        {
+          "from": "cls", "to": "kt", "label": "LineNumberTable → lines 9–15", "kind": "return",
+          "why": "The bytecode keeps a small table: 'instruction 0 came from line 9, instruction 14 from line 12'… That's how a crash report can say TapApp.kt:13. Strip this table (R8 can) and crashes show no line numbers.",
+          "file": "TapApp.javap.txt:126-131",
+          "code": {
+            "repo": "D:/apk-lab", "path": "module1/TapApp.javap.txt", "from": 124, "to": 135, "focus": [126],
+            "notes": {
+              "126": "Maps instruction offsets back to Kotlin line numbers.",
+              "127": "Offset 0 → TapApp.kt line 9.",
+              "130": "Offset 20 → line 13, the Measure.init line.",
+              "132": "LocalVariableTable: names of local variables, for debuggers. Debug builds keep it; release builds normally drop it."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "short": "5 · Linking",
+      "title": "At runtime, everything is found by name",
+      "summary": "When the phone starts ultra, Android reads the manifest, sees the string \".TapApp\", and asks ART to load the class called com.tap.app.TapApp. When onCreate reaches invokestatic #44, ART looks up a class named sh/measure/android/Measure and a method named init with that exact descriptor. If the name doesn't match, the app crashes.",
+      "oneliner": "Two kinds of callers find classes by name: other bytecode (visible in the pool) and strings outside the bytecode (like the manifest). The second kind is invisible to a tool that only reads bytecode.",
+      "messages": [
+        {
+          "from": "manifest", "to": "art", "label": "android:name=\".TapApp\"", "kind": "main",
+          "why": "New term — linking: connecting a name to the real class or method at runtime. The manifest is plain XML; nothing in any .class file says 'TapApp is the Application'. Only this string does.",
+          "file": "AndroidManifest.xml:130-131",
+          "code": {
+            "path": "apps/ultra_app/android/app/src/main/AndroidManifest.xml", "from": 128, "to": 134, "focus": [131],
+            "notes": {
+              "131": "A class name written as a string. If TapApp were renamed to 'a' and this string not updated, the app would crash on launch with ClassNotFoundException."
+            }
+          }
+        },
+        {
+          "from": "art", "to": "cls", "label": "load class com.tap.app.TapApp", "kind": "main",
+          "why": "ART finds TapApp by its name, creates it with the constructor <init>()V (entry #8's twin), and calls onCreate()."
+        },
+        {
+          "from": "cls", "to": "measure", "label": "invokestatic #44 → find 'Measure.init'", "kind": "main",
+          "why": "ART resolves pool #44 by text: class 'sh/measure/android/Measure', method 'init', descriptor '(Context, MeasureConfig)V'. If the SDK's method were renamed and our call not updated, you'd get NoSuchMethodError."
+        },
+        {
+          "from": "measure", "to": "art", "label": "found → run it", "kind": "return",
+          "why": "Names match, so the call runs. Linking succeeds only when the caller's text and the callee's text are identical."
+        }
+      ]
+    },
+    {
+      "short": "6 · Metadata",
+      "title": "Extra luggage: attributes",
+      "summary": "After the methods come attributes: SourceFile (\"TapApp.kt\"), InnerClasses, and RuntimeVisibleAnnotations holding kotlin.Metadata — Kotlin's own description of the class so Kotlin reflection can rebuild properties, nullability and default arguments. None of it is needed to run onCreate.",
+      "oneliner": "Attributes help humans and tools (crash reports, reflection, debuggers). They don't help the code run, and they cost bytes in every class.",
+      "messages": [
+        {
+          "from": "cls", "to": "cls", "label": "SourceFile, InnerClasses, kotlin.Metadata", "kind": "main",
+          "why": "New term — attribute: an optional labelled block attached to a class or method. Like the notes stapled to a form. R8 removes most of them unless a rule says keep them (that's what -keepattributes in our proguard-rules.pro does).",
+          "file": "TapApp.javap.txt:136-147",
+          "code": {
+            "repo": "D:/apk-lab", "path": "module1/TapApp.javap.txt", "from": 136, "to": 147, "focus": [138, 141],
+            "notes": {
+              "137": "InnerClasses: records that MoEngageManager$Companion lives inside MoEngageManager. The $ is how nested classes are spelled.",
+              "138": "SourceFile: the original file name, shown in stack traces (at com.tap.app.TapApp.onCreate(TapApp.kt:13)).",
+              "141": "kotlin.Metadata: Kotlin's encoded description of the class, read by kotlin-reflect and some serializers.",
+              "146": "d2 = more names as text, including the build variant app_stagingDebug."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "short": "7 · Why R8 cares",
+      "title": "Two facts R8 is built around",
+      "summary": "(a) Because every reference is a name, R8 can rename TapApp → a and Measure.init → b, but only if it rewrites every pool entry that mentions them, in every class, at the same time. (b) Strings outside the bytecode (the manifest, Class.forName(\"…\"), ServiceLoader files, JSON field names) also name classes, and R8 can't always see them. A keep rule tells R8: 'someone you can't see uses this name — leave it alone'.\n\nTeach-back:\n1. TapApp.kt never mentions an address for Measure.init. How does the phone find it?\n2. Why would renaming TapApp to 'a' crash the app, even if every .class file were updated correctly?\n3. Our ultra rules contain -keepnames class ** { *; }. Using this lesson, what does that stop R8 from doing — and to how many classes?",
+      "oneliner": "Renaming is safe when every reference is visible. Keep rules exist for the references that aren't.",
+      "messages": [
+        {
+          "from": "cls", "to": "r8", "label": "unshrunk .class files (this build)", "kind": "main",
+          "why": "This TapApp.class came from a stagingDebug build, so R8 didn't touch it. In a release build, this is exactly what R8 receives — for our code and for all ~38,000 classes of the SDKs."
+        },
+        {
+          "from": "r8", "to": "pool", "label": "rename everywhere at once", "kind": "main",
+          "why": "Reasoning: R8 reads every class's constant pool, so it can change a name in the definition and every caller together. That's safe for bytecode-to-bytecode references."
+        },
+        {
+          "from": "manifest", "to": "r8", "label": "\".TapApp\" — handled by AAPT rules", "kind": "async",
+          "why": "The build's resource tool (AAPT2) generates keep rules for classes named in the manifest, so TapApp is kept automatically. SDK reflection by string has no such helper — that's what our hand-written keep rules are for (Module 4 and 9)."
+        }
+      ]
+    }
+  ]
+}

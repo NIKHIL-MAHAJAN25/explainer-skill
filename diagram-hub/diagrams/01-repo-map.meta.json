@@ -1,0 +1,12 @@
+{
+  "title": "Lesson 1: what ships inside each app",
+  "description": "Why a bonds-only SDK in the shared services package ends up inside TapInvest too.",
+  "tags": [
+    "lesson",
+    "architecture",
+    "moengage-task"
+  ],
+  "order": 1,
+  "theme": "neutral",
+  "kind": "flow"
+}

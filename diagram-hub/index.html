@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diagram Hub</title>
+<script>
+  // Apply saved theme before paint (Linen light by default).
+  (function () {
+    var t = 'light';
+    try { t = localStorage.getItem('diagram-hub-theme-v2') || 'light'; } catch (e) {}
+    document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400..800&display=swap">
+<style>
+  /* "Linen" look, copied from D:\family-dashboard (tailwind.config.js, Layout.jsx Ambient) */
+  :root, :root[data-theme="light"] {
+    --ground: #ECE7DF; --surface: #FBF9F6; --surface-2: #F3EFE9;
+    --border: #E5DFD5; --border-strong: #D4CCBF;
+    --text: #2A2622; --text-2: #4F4943; --muted: #7D756B; --faint: #A9A094;
+    --accent: #3D6B63; --accent-soft: #E4EEEA;
+    --glass-bg: rgba(255,255,255,0.38); --glass-border: rgba(255,255,255,0.55);
+    --card-bg: rgba(251,249,246,0.78);
+    --shadow: 0 1px 2px rgba(62,46,30,0.04), 0 12px 32px -16px rgba(62,46,30,0.16);
+    --shadow-lift: 0 2px 4px rgba(62,46,30,0.05), 0 20px 44px -20px rgba(62,46,30,0.26);
+    --wash: radial-gradient(70vw 70vh at 5% 0%, #ADCBE0, transparent 72%),
+            radial-gradient(65vw 75vh at 100% 15%, #C2DBC8, transparent 72%),
+            radial-gradient(70vw 70vh at 80% 105%, #EAD9B8, transparent 72%),
+            radial-gradient(65vw 70vh at 0% 100%, #C8CCE8, transparent 72%), #ECE7DF;
+    color-scheme: light;
+  }
+  /* Evening linen: the same warm family, dimmed */
+  :root[data-theme="dark"] {
+    --ground: #1E1B18; --surface: #2A2622; --surface-2: #332E29;
+    --border: #3D3731; --border-strong: #4F4943;
+    --text: #F3EFE9; --text-2: #DCD5CA; --muted: #A9A094; --faint: #7D756B;
+    --accent: #8FBDB3; --accent-soft: rgba(143,189,179,0.14);
+    --glass-bg: rgba(42,38,34,0.55); --glass-border: rgba(255,255,255,0.08);
+    --card-bg: rgba(42,38,34,0.72);
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 12px 32px -16px rgba(0,0,0,.5);
+    --shadow-lift: 0 2px 4px rgba(0,0,0,.35), 0 20px 44px -20px rgba(0,0,0,.6);
+    --wash: radial-gradient(70vw 70vh at 5% 0%, #3A3550, transparent 72%),
+            radial-gradient(65vw 75vh at 100% 15%, #2F4038, transparent 72%),
+            radial-gradient(70vw 70vh at 80% 105%, #4A3A2C, transparent 72%),
+            radial-gradient(65vw 70vh at 0% 100%, #3B3046, transparent 72%), #1E1B18;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: var(--ground); color: var(--text);
+    font: 15px/22px "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums;
+  }
+  .ambient { position: fixed; inset: 0; z-index: -1; pointer-events: none; background: var(--wash); }
+  button, input { font: inherit; color: inherit; }
+  a { color: var(--accent); }
+  ::selection { background: var(--accent-soft); }
+
+  /* ---------- Hub ---------- */
+  .wrap { max-width: 1760px; margin: 0 auto; padding: 14px 24px 48px; }
+  header.top {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    margin-bottom: 18px; padding: 12px 14px 12px 22px; border-radius: 20px;
+    background: var(--glass-bg); border: 1px solid var(--glass-border);
+    backdrop-filter: blur(28px); -webkit-backdrop-filter: blur(28px); box-shadow: var(--shadow);
+  }
+  header.top h1 { font-size: 20px; line-height: 28px; margin: 0; letter-spacing: -0.01em; font-weight: 780; }
+  .count {
+    font-size: 13px; color: var(--muted); font-weight: 600;
+    background: var(--surface-2); border: 1px solid var(--border);
+    padding: 2px 10px; border-radius: 8px;
+  }
+  .spacer { flex: 1; }
+  .btn {
+    background: var(--surface); border: 1px solid var(--border-strong);
+    border-radius: 10px; padding: 8px 14px; cursor: pointer; font-weight: 650; font-size: 14px;
+    text-decoration: none; color: var(--text); display: inline-flex; align-items: center; gap: 6px;
+    white-space: nowrap; transition: border-color .15s;
+  }
+  .btn:hover { border-color: var(--faint); }
+  .btn:focus-visible, .card:focus-visible, .chip:focus-visible, #search:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+
+  .controls { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
+  .search-box { position: relative; max-width: 720px; }
+  #search {
+    width: 100%; padding: 11px 44px 11px 16px; font-size: 15px;
+    background: var(--card-bg); border: 1px solid var(--border-strong); border-radius: 14px;
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  }
+  #search::placeholder { color: var(--faint); }
+  #search:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+  .kbd {
+    position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    font-size: 12px; color: var(--muted); border: 1px solid var(--border-strong);
+    border-radius: 6px; padding: 0 7px; pointer-events: none; background: var(--surface);
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 5px 12px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted);
+    transition: background .15s, color .15s, border-color .15s;
+  }
+  .chip:hover { color: var(--text); border-color: var(--border-strong); }
+  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--card-bg); border: 1px solid var(--glass-border); border-radius: 20px;
+    padding: 20px 22px; cursor: pointer; text-align: left; box-shadow: var(--shadow);
+    backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+    display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 190px;
+    transition: box-shadow .2s, transform .2s, border-color .2s;
+  }
+  .card:hover { box-shadow: var(--shadow-lift); transform: translateY(-2px); border-color: var(--border-strong); }
+  .card h2 { font-size: 18px; line-height: 24px; margin: 0; font-weight: 750; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+  .card p { margin: 0; color: var(--text-2); font-size: 14.5px; line-height: 22px; overflow-wrap: anywhere; }
+  .card .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; padding-top: 4px; }
+  .tag {
+    font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 7px;
+    background: var(--accent-soft); color: var(--accent); border: 0;
+  }
+  .card .meta { font-size: 12.5px; color: var(--faint); display: flex; justify-content: space-between; gap: 8px; }
+  .card .app { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+
+  /* Card colour by app: neutral grey (any app), bonds blue (BondScanner), ultra black/white (TapInvest). */
+  .card.theme-neutral { background: rgba(243,243,242,0.86); border-color: #DEDEDB; }
+  .card.theme-neutral .app { color: #75757A; }
+  .card.theme-neutral .tag { background: #E6E8EB; color: #55606B; }
+  .card.theme-bonds { background: linear-gradient(180deg, rgba(226,237,251,0.95), rgba(242,247,253,0.9)); border-color: #C3D6EE; }
+  .card.theme-bonds h2 { color: #16222F; }
+  .card.theme-bonds p { color: #3B4A5B; }
+  .card.theme-bonds .app { color: #2563A8; }
+  .card.theme-bonds .tag { background: #D7E6F7; color: #2563A8; }
+  .card.theme-bonds .meta { color: #6A7B8E; }
+  .card.theme-ultra { background: #0B0B0C; border-color: #0B0B0C; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .card.theme-ultra:hover { border-color: #3A3A3C; }
+  .card.theme-ultra h2 { color: #FFFFFF; }
+  .card.theme-ultra p { color: #C7C7CC; }
+  .card.theme-ultra .app { color: #FFFFFF; }
+  .card.theme-ultra .tag { background: rgba(255,255,255,0.1); color: #E5E5EA; }
+  .card.theme-ultra .meta { color: #8E8E93; }
+  .card .file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .empty {
+    text-align: center; padding: 56px 16px; color: var(--muted);
+    border: 1px dashed var(--border-strong); border-radius: 20px; background: var(--card-bg);
+  }
+  .empty strong { color: var(--text); display: block; font-size: 17px; margin-bottom: 6px; }
+
+  /* ---------- Viewer: the diagram gets the whole screen ---------- */
+  #viewer { position: fixed; inset: 0; display: none; flex-direction: column; background: var(--ground); z-index: 10; }
+  body.viewing #viewer { display: flex; }
+  body.viewing #hub { display: none; }
+  .vbar {
+    display: flex; align-items: center; gap: 10px; padding: 6px 12px; min-width: 0;
+    background: var(--glass-bg); border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+  }
+  .vbar .btn { padding: 5px 12px; font-size: 13px; }
+  .vbar .vtitle { flex: 1; min-width: 0; font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #frame { flex: 1; width: 100%; border: 0; background: var(--ground); }
+
+  @media (max-width: 560px) {
+    .vbar .newtab-label { display: none; }
+    .wrap { padding: 10px 12px 40px; }
+    .grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="ambient" aria-hidden="true"></div>
+<div id="hub" class="wrap">
+  <header class="top">
+    <h1>Diagram Hub</h1>
+    <span class="count" id="count">0 diagrams</span>
+    <span class="spacer"></span>
+    <button class="btn" id="theme" type="button" title="Toggle light/dark theme">Light mode</button>
+  </header>
+
+  <div class="controls" id="controls">
+    <div class="search-box">
+      <input id="search" type="search" placeholder="Search titles, descriptions, tags" autocomplete="off" aria-label="Search diagrams">
+      <span class="kbd">/</span>
+    </div>
+    <div class="chips" id="chips" role="group" aria-label="Filter by tag"></div>
+  </div>
+
+  <main id="grid" class="grid" aria-live="polite"></main>
+  <div id="empty" class="empty" hidden></div>
+</div>
+
+<div id="viewer" role="dialog" aria-label="Diagram viewer">
+  <div class="vbar">
+    <button class="btn" id="back" type="button" title="Back (Esc)">&larr; Back</button>
+    <span class="vtitle" id="vtitle"></span>
+    <a class="btn" id="newtab" target="_blank" rel="noopener">&nearr; <span class="newtab-label">Open in new tab</span></a>
+  </div>
+  <iframe id="frame" title="Diagram"></iframe>
+</div>
+
+<script src="diagrams.js"></script>
+<script>
+(function () {
+  var list = Array.isArray(window.DIAGRAMS) ? window.DIAGRAMS : [];
+  var $ = function (id) { return document.getElementById(id); };
+  var grid = $('grid'), empty = $('empty'), search = $('search'), chips = $('chips');
+  var activeTags = new Set();
+
+  // ---------- Theme ----------
+  var root = document.documentElement;
+  function syncThemeLabel() {
+    $('theme').textContent = root.getAttribute('data-theme') === 'dark' ? 'Day' : 'Evening';
+  }
+  $('theme').addEventListener('click', function () {
+    var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('diagram-hub-theme-v2', next); } catch (e) {}
+    syncThemeLabel();
+  });
+  syncThemeLabel();
+
+  // ---------- Helpers ----------
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function fmtDate(iso) {
+    var d = new Date(iso);
+    if (isNaN(d)) return '';
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+  function fmtSize(b) {
+    if (!(b >= 0)) return '';
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return (b / 1024).toFixed(0) + ' KB';
+    return (b / 1048576).toFixed(1) + ' MB';
+  }
+  function hrefFor(d) { return 'diagrams/' + encodeURIComponent(d.file); }
+
+  // ---------- Empty state (no diagrams.js) ----------
+  $('count').textContent = list.length + (list.length === 1 ? ' diagram' : ' diagrams');
+  if (!list.length) {
+    $('controls').hidden = true;
+    empty.hidden = false;
+    empty.innerHTML = '';
+    empty.appendChild(el('strong', null, 'No diagrams loaded yet'));
+    empty.appendChild(el('span', null, 'Double-click Open Diagram Hub (.bat on Windows, .command on Mac)'));
+    return;
+  }
+
+  // ---------- Filters: fixed, from each diagram's theme (app) and kind (flow | concept) ----------
+  var FILTERS = [
+    { id: 'all', label: 'All', test: function () { return true; } },
+    { id: 'flows', label: 'App flows', test: function (d) { return d.kind === 'flow'; } },
+    { id: 'bonds', label: 'BondScanner', test: function (d) { return d.theme === 'bonds'; } },
+    { id: 'ultra', label: 'TapInvest (ultra)', test: function (d) { return d.theme === 'ultra'; } },
+    { id: 'concepts', label: 'Android concepts', test: function (d) { return d.kind === 'concept'; } }
+  ];
+  var activeFilter = FILTERS[0];
+  var filterButtons = [];
+  FILTERS.forEach(function (f) {
+    var count = list.filter(f.test).length;
+    var c = el('button', 'chip', f.label + ' · ' + count);
+    c.type = 'button';
+    c.setAttribute('aria-pressed', f === activeFilter ? 'true' : 'false');
+    c.addEventListener('click', function () {
+      activeFilter = f;
+      filterButtons.forEach(function (b) { b.setAttribute('aria-pressed', b === c ? 'true' : 'false'); });
+      render();
+    });
+    filterButtons.push(c);
+    chips.appendChild(c);
+  });
+
+  // ---------- Grid ----------
+  function matches(d, q) {
+    if (!activeFilter.test(d)) return false;
+    if (!q) return true;
+    var hay = [d.title, d.description, (d.tags || []).join(' '), d.file].join(' ').toLowerCase();
+    return q.split(/\s+/).every(function (w) { return hay.indexOf(w) >= 0; });
+  }
+
+  function render() {
+    var q = search.value.trim().toLowerCase();
+    var shown = list.filter(function (d) { return matches(d, q); });
+    grid.innerHTML = '';
+    shown.forEach(function (d) {
+      var theme = d.theme || 'neutral';
+      var card = el('button', 'card theme-' + theme);
+      card.type = 'button';
+      var label = theme === 'bonds' ? 'BondScanner' : theme === 'ultra' ? 'TapInvest'
+        : d.kind === 'concept' ? 'Android concept' : 'Both apps';
+      card.appendChild(el('div', 'app', label));
+      card.appendChild(el('h2', null, d.title));
+      if (d.description) card.appendChild(el('p', null, d.description));
+      if (d.tags && d.tags.length) {
+        var tg = el('div', 'tags');
+        d.tags.forEach(function (t) { tg.appendChild(el('span', 'tag', t)); });
+        card.appendChild(tg);
+      }
+      var meta = el('div', 'meta');
+      meta.appendChild(el('span', 'file', d.file));
+      meta.appendChild(el('span', null, fmtDate(d.modified) + ' · ' + fmtSize(d.size)));
+      card.appendChild(meta);
+      card.addEventListener('click', function () { location.hash = '#/' + encodeURIComponent(d.file); });
+      grid.appendChild(card);
+    });
+    empty.hidden = shown.length > 0;
+    if (!shown.length) {
+      empty.innerHTML = '';
+      empty.appendChild(el('strong', null, 'No matching diagrams'));
+      empty.appendChild(el('span', null, 'Try a different search or clear the tag filters.'));
+    }
+  }
+  search.addEventListener('input', render);
+  render();
+
+  // ---------- Viewer (driven by the URL hash) ----------
+  var lastFocusFile = null;
+  function route() {
+    var m = location.hash.match(/^#\/(.+)$/);
+    var file = m ? decodeURIComponent(m[1]) : null;
+    var d = file && list.find(function (x) { return x.file === file; });
+    if (d) {
+      var href = hrefFor(d);
+      if ($('frame').getAttribute('src') !== href) $('frame').setAttribute('src', href);
+      $('newtab').href = href;
+      $('vtitle').textContent = d.title;
+      document.title = d.title + ' - Diagram Hub';
+      document.body.classList.add('viewing');
+      lastFocusFile = d.file;
+      $('back').focus();
+    } else {
+      document.body.classList.remove('viewing');
+      $('frame').removeAttribute('src');
+      document.title = 'Diagram Hub';
+    }
+  }
+  function closeViewer() {
+    if (!document.body.classList.contains('viewing')) return;
+    location.hash = '';
+  }
+  $('back').addEventListener('click', closeViewer);
+  window.addEventListener('hashchange', route);
+  route();
+
+  // ---------- Keyboard ----------
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && document.body.classList.contains('viewing')) {
+      e.preventDefault(); closeViewer(); return;
+    }
+    if (e.key === '/' && !document.body.classList.contains('viewing')) {
+      var tag = (document.activeElement && document.activeElement.tagName) || '';
+      if (tag !== 'INPUT' && tag !== 'TEXTAREA') { e.preventDefault(); search.focus(); search.select(); }
+    }
+  });
+  // Esc while focus is inside the iframe: same-origin under file:// is not guaranteed,
+  // so try to listen there too and ignore failures.
+  $('frame').addEventListener('load', function () {
+    try {
+      this.contentWindow.document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closeViewer();
+      });
+    } catch (e) {}
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "title": "Push notifications inside TapInvest",
+  "description": "The concept mapped onto TapInvest as committed today: FcmService (token), MoEngage's push service → PushListener → NotificationUtil (open app), Android (closed app), MainActivity's three ways to find the link, DeepLinkService.",
+  "tags": [
+    "reference",
+    "notifications",
+    "explainer",
+    "moengage-task"
+  ],
+  "order": 4,
+  "theme": "ultra",
+  "kind": "flow"
+}

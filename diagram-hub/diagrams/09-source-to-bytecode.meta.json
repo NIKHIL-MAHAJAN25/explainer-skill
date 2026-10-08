@@ -1,0 +1,15 @@
+{
+  "title": "R8 · Module 1 — Source to bytecode",
+  "description": "Module 1 of the R8 curriculum. Follows ultra's TapApp.kt through the Kotlin compiler into TapApp.class: the file layout, the constant pool (every name stored as text), the stack-machine instructions of onCreate, linking by name at runtime, and the metadata attributes. Ends on the two facts R8 is built around: renaming must be done everywhere at once, and lookups by string are invisible.",
+  "tags": [
+    "lesson",
+    "r8",
+    "bytecode",
+    "jvm",
+    "android-foundations",
+    "r8-curriculum"
+  ],
+  "order": 9,
+  "theme": "ultra",
+  "kind": "concept"
+}

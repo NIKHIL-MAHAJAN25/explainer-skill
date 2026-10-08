@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>R8 · Module 1 — Source to bytecode</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400..800&family=JetBrains+Mono:wght@400;500&display=swap" />
+<style>
+  /* "Linen" tokens, copied from D:\family-dashboard\tailwind.config.js */
+  :root {
+    --ground: #ECE7DF; --surface: #FBF9F6; --subtle: #F3EFE9;
+    --line: #E5DFD5; --line-strong: #D4CCBF;
+    --ink: #2A2622; --ink-2: #4F4943; --ink-3: #7D756B; --ink-4: #A9A094;
+    --accent: #3D6B63; --accent-soft: #E4EEEA;
+    --ok: #4D7C5A; --ok-soft: #EAF1EA; --ok-line: #C8DCCB;
+    --watch: #AD772A; --watch-soft: #F7EEDD; --watch-line: #E9D3AC;
+    --act: #B4503C; --act-soft: #F6E5DF; --act-line: #E9C3B6;
+    --shadow-card: 0 1px 2px rgba(62,46,30,0.04), 0 12px 32px -16px rgba(62,46,30,0.16);
+    --shadow-lift: 0 2px 4px rgba(62,46,30,0.05), 0 20px 44px -20px rgba(62,46,30,0.26);
+    --accent-line: #BCD3CC;
+    --card: rgba(251,249,246,0.82); --card-soft: rgba(251,249,246,0.7); --code-bg: #FFFDF9; --halo: rgba(251,249,246,0.95);
+    --watch-ink: #6E4C1B; --watch-ink-strong: #5A3D14;
+    --amb1: #ADCBE0; --amb2: #C2DBC8; --amb3: #EAD9B8; --amb4: #C8CCE8;
+    color-scheme: light;
+  }
+
+  /* App themes, picked by the explainer's "theme": neutral (any app), bonds (BondScanner), ultra (TapInvest). */
+  html[data-theme="neutral"] {
+    --ground: #EAEAE8; --surface: #FAFAF9; --subtle: #F1F1EF; --line: #E1E1DE; --line-strong: #CFCFCB;
+    --ink: #232323; --ink-2: #4A4A48; --ink-3: #75757A; --ink-4: #A3A3A3;
+    --accent: #55606B; --accent-soft: #E6E9EC; --accent-line: #C7CDD3;
+    --card: rgba(250,250,249,0.86); --card-soft: rgba(250,250,249,0.74); --code-bg: #FCFCFB; --halo: rgba(250,250,249,0.95);
+    --amb1: #D6D9DE; --amb2: #E2E2DE; --amb3: #DAD8D4; --amb4: #D0D3D9;
+  }
+  html[data-theme="bonds"] {
+    --ground: #E4ECF5; --surface: #F7FAFD; --subtle: #EDF2F8; --line: #D9E3EE; --line-strong: #C2D1E2;
+    --ink: #16222F; --ink-2: #3B4A5B; --ink-3: #6A7B8E; --ink-4: #9AA9BA;
+    --accent: #2563A8; --accent-soft: #E1ECF8; --accent-line: #B5CDE8;
+    --card: rgba(247,250,253,0.86); --card-soft: rgba(247,250,253,0.74); --code-bg: #FAFCFE; --halo: rgba(247,250,253,0.95);
+    --amb1: #A9C8EE; --amb2: #BFD8F2; --amb3: #D3E1F2; --amb4: #B7C4EA;
+  }
+  html[data-theme="ultra"] {
+    --ground: #EFEFEF; --surface: #FFFFFF; --subtle: #F4F4F4; --line: #E4E4E4; --line-strong: #CDCDCD;
+    --ink: #0B0B0C; --ink-2: #3A3A3C; --ink-3: #6E6E73; --ink-4: #A1A1A6;
+    --accent: #0B0B0C; --accent-soft: #EDEDED; --accent-line: #BDBDBD;
+    --ok: #3A3A3C; --ok-soft: #EFEFEF; --ok-line: #D0D0D0;
+    --watch: #6E6E73; --watch-soft: #F4F4F4; --watch-line: #DADADA; --watch-ink: #2B2B2D; --watch-ink-strong: #0B0B0C;
+    --card: rgba(255,255,255,0.94); --card-soft: rgba(255,255,255,0.82); --code-bg: #FFFFFF; --halo: rgba(255,255,255,0.96);
+    --amb1: #D9D9D9; --amb2: #E9E9E9; --amb3: #D2D2D2; --amb4: #E3E3E3;
+  }
+  /* TapInvest premium: a black header bar over white cards. */
+  html[data-theme="ultra"] .bar { background: #0B0B0C; border-color: #0B0B0C; color: #FFFFFF; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  html[data-theme="ultra"] .bar .sub, html[data-theme="ultra"] .counter { color: #A1A1A6; }
+  html[data-theme="ultra"] .steps { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12); }
+  html[data-theme="ultra"] .pill { color: #A1A1A6; }
+  html[data-theme="ultra"] .pill:hover { color: #FFFFFF; background: rgba(255,255,255,0.08); }
+  html[data-theme="ultra"] .pill[aria-current="step"] { background: #FFFFFF; color: #0B0B0C; }
+  html[data-theme="ultra"] .pill .n { background: rgba(255,255,255,0.12); color: #D1D1D6; }
+  html[data-theme="ultra"] .pill[aria-current="step"] .n { background: #0B0B0C; color: #FFFFFF; }
+  html[data-theme="ultra"] .bar .btn { background: transparent; color: #FFFFFF; border-color: rgba(255,255,255,0.28); }
+  html[data-theme="ultra"] .bar .btn.primary { background: #FFFFFF; color: #0B0B0C; border-color: #FFFFFF; }
+  html[data-theme="ultra"] .actor.on { border-color: #0B0B0C; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 15px; line-height: 22px; color: var(--ink); background: var(--ground);
+    -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums;
+    overflow: hidden;
+  }
+  ::selection { background: var(--accent-soft); }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Painted backdrop: the dashboard's afternoon wash */
+  .ambient { position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background:
+      radial-gradient(70vw 70vh at 5% 0%, var(--amb1), transparent 72%),
+      radial-gradient(65vw 75vh at 100% 15%, var(--amb2), transparent 72%),
+      radial-gradient(70vw 70vh at 80% 105%, var(--amb3), transparent 72%),
+      radial-gradient(65vw 70vh at 0% 100%, var(--amb4), transparent 72%),
+      var(--ground); }
+  .glass { border: 1px solid rgba(255,255,255,0.55); background: rgba(255,255,255,0.38);
+    backdrop-filter: blur(28px); -webkit-backdrop-filter: blur(28px);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 12px 32px -18px rgba(62,46,30,0.22); }
+
+  .app { height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; gap: 14px; padding: 14px 18px 18px; }
+
+  /* Header */
+  .bar { display: flex; align-items: center; gap: 18px; min-height: 64px; padding: 10px 12px 10px 20px; border-radius: 20px; }
+  .bar .titles { min-width: 0; flex: 0 1 auto; }
+  .bar h1 { margin: 0; font-size: 18px; line-height: 24px; font-weight: 750; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar .sub { margin: 0; font-size: 13px; line-height: 18px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .steps { display: flex; gap: 6px; min-width: 0; margin: 0 auto; padding: 4px; border-radius: 14px; background: rgba(255,255,255,0.35); border: 1px solid rgba(255,255,255,0.5); overflow-x: auto; max-width: 100%; }
+  .pill { border: 0; background: transparent; padding: 7px 12px; border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink-3); white-space: nowrap; transition: background .2s, color .2s; }
+  .pill:hover { color: var(--ink); background: rgba(255,255,255,0.5); }
+  .pill[aria-current="step"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-card); }
+  .pill .n { display: inline-grid; place-items: center; width: 18px; height: 18px; margin-right: 6px; border-radius: 6px; background: var(--subtle); font-size: 11px; color: var(--ink-3); }
+  .pill[aria-current="step"] .n { background: var(--accent); color: #fff; }
+  .ctl { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+  .btn { border: 1px solid var(--line-strong); background: var(--surface); padding: 8px 14px; border-radius: 10px; font-weight: 650; font-size: 14px; cursor: pointer; transition: border-color .15s, background .15s; }
+  .btn:hover { border-color: var(--ink-4); }
+  .btn.primary { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+  .btn.primary:hover { background: var(--ink-2); }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .counter { font-size: 13px; color: var(--ink-3); min-width: 44px; text-align: center; }
+  .home { font-size: 13px; color: var(--ink-3); text-decoration: none; padding: 6px 8px; border-radius: 8px; }
+  .home:hover { color: var(--ink); background: rgba(255,255,255,0.5); }
+
+  /* Stage */
+  .stage { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 14px; min-height: 0; }
+  @media (max-width: 1180px) { .stage { grid-template-columns: 1fr; grid-template-rows: minmax(420px, 1fr) auto; } body { overflow: auto; } .app { height: auto; min-height: 100vh; } }
+  .board { position: relative; border-radius: 22px; min-height: 0; overflow: hidden; }
+  .actors { position: relative; z-index: 2; display: grid; gap: 12px; padding: 22px 22px 0; }
+  .actor { border-radius: 16px; padding: 12px 12px 12px; background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow-card); text-align: center; transition: opacity .3s, transform .3s, box-shadow .3s; min-width: 0; }
+  .actor .ic { display: grid; place-items: center; width: 34px; height: 34px; margin: 0 auto 6px; border-radius: 10px; }
+  .actor .ic svg { width: 19px; height: 19px; }
+  .actor .name { font-weight: 750; font-size: 15px; line-height: 20px; overflow-wrap: normal; word-break: normal; }
+  .actors.many .actor .name { font-size: 14px; }
+  .actor .about { font-size: 12px; line-height: 16px; color: var(--ink-3); margin-top: 2px; overflow-wrap: break-word; }
+  .actor.dim { opacity: .42; }
+  .actor.on { box-shadow: var(--shadow-lift); transform: translateY(-1px); }
+  .tone-you .ic { background: var(--accent-soft); color: var(--accent); }
+  .tone-platform .ic { background: var(--watch-soft); color: var(--watch); }
+  .tone-server .ic { background: var(--ok-soft); color: var(--ok); }
+  .tone-person .ic { background: var(--subtle); color: var(--ink-2); }
+  .tone-you.on { border-color: var(--accent-line); } .tone-platform.on { border-color: var(--watch-line); } .tone-server.on { border-color: var(--ok-line); } .tone-person.on { border-color: var(--line-strong); }
+  svg.wires { position: absolute; inset: 0; z-index: 1; overflow: visible; }
+  .lifeline { stroke: var(--line-strong); stroke-width: 1.5; stroke-dasharray: 3 6; }
+  .wire { fill: none; stroke-width: 2.6; stroke-linecap: round; }
+  .wire.main { stroke: var(--ink); }
+  .wire.return { stroke: var(--ink-3); stroke-dasharray: 7 6; stroke-width: 2.2; }
+  .wire.async { stroke: var(--accent); stroke-dasharray: 2 7; stroke-width: 3; }
+  .wlabel { font-size: 15px; font-weight: 650; fill: var(--ink); paint-order: stroke; stroke: var(--halo); stroke-width: 6px; stroke-linejoin: round; }
+  .wlabel.return { fill: var(--ink-2); font-weight: 600; }
+  .badge circle { fill: var(--ink); } .badge text { fill: #fff; font-size: 12px; font-weight: 750; }
+  .badge.return circle { fill: var(--ink-3); } .badge.async circle { fill: var(--accent); }
+  .msg { transition: opacity .2s; }
+  .msg.cold { opacity: .25; }
+  .msg .wire { stroke-dashoffset: 0; }
+  .empty-cast { position: absolute; left: 0; right: 0; bottom: 34px; text-align: center; color: var(--ink-3); font-size: 15px; z-index: 2; }
+
+  /* Explanation panel */
+  .explain { border-radius: 22px; padding: 22px 22px 20px; display: flex; flex-direction: column; min-height: 0; overflow: auto; }
+  .eyebrow { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); }
+  .explain h2 { margin: 6px 0 8px; font-size: 26px; line-height: 32px; letter-spacing: -0.015em; font-weight: 780; }
+  .explain .summary { margin: 0 0 16px; color: var(--ink-2); font-size: 15.5px; line-height: 24px; }
+  .notes { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .note { display: grid; grid-template-columns: 26px 1fr; gap: 10px; padding: 10px 12px; border-radius: 14px; background: var(--card-soft); border: 1px solid var(--line); cursor: default; transition: border-color .15s, background .15s; }
+  .note:hover, .note.hot { border-color: var(--line-strong); background: var(--surface); }
+  .note .num { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 8px; background: var(--ink); color: #fff; font-size: 12px; font-weight: 750; margin-top: 1px; }
+  .note.return .num { background: var(--ink-3); } .note.async .num { background: var(--accent); }
+  .note .what { font-weight: 700; font-size: 15px; }
+  .note .why { color: var(--ink-2); font-size: 14px; line-height: 21px; margin-top: 2px; }
+  .note .file { font-family: "JetBrains Mono", ui-monospace, Consolas, monospace; font-size: 12px; color: var(--accent); margin-top: 4px; overflow-wrap: anywhere; }
+  .oneliner { margin-top: 14px; padding: 12px 14px; border-radius: 14px; background: var(--watch-soft); border: 1px solid var(--watch-line); color: var(--watch-ink); font-size: 14.5px; line-height: 21px; }
+  .oneliner b { color: var(--watch-ink-strong); }
+  .legend { margin-top: auto; padding-top: 16px; display: flex; flex-wrap: wrap; gap: 14px; font-size: 12.5px; color: var(--ink-3); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { display: inline-block; width: 26px; height: 0; border-top: 2.6px solid var(--ink); }
+  .legend i.r { border-top: 2.2px dashed var(--ink-3); } .legend i.a { border-top: 3px dotted var(--accent); }
+  .keys { font-size: 12px; color: var(--ink-4); margin-top: 8px; }
+
+  /* Level 2: code peek */
+  .stage.wide { grid-template-columns: minmax(0, 1fr) clamp(440px, 42vw, 640px); }
+  .note.has-code { cursor: pointer; }
+  .note .chip { display: inline-block; margin-left: 8px; padding: 0 7px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); font: 600 11px/18px "JetBrains Mono", ui-monospace, Consolas, monospace; vertical-align: 1px; }
+  .note.sel { border-color: var(--accent); background: var(--surface); box-shadow: var(--shadow-card); }
+  .note.sel .chip { background: var(--accent); color: #fff; }
+  .peek { grid-column: 1 / -1; margin-top: 6px; border-radius: 12px; border: 1px solid var(--line-strong); background: var(--code-bg); overflow: hidden; cursor: auto; }
+  .peek .head { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-bottom: 1px solid var(--line); background: var(--subtle); }
+  .peek .path { flex: 1; min-width: 0; font: 500 12px/16px "JetBrains Mono", ui-monospace, Consolas, monospace; color: var(--ink-2); overflow-wrap: anywhere; }
+  .peek .path b { color: var(--ink); font-weight: 600; }
+  .peek .path .ref { color: var(--ink-4); }
+  .peek .open { flex: 0 0 auto; font-size: 12.5px; font-weight: 650; color: var(--accent); text-decoration: none; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--accent-line); background: var(--surface); white-space: nowrap; }
+  .peek .open:hover { border-color: var(--accent); }
+  .peek .code { overflow-x: auto; padding: 6px 0 8px; font: 12.5px/20px "JetBrains Mono", ui-monospace, Consolas, monospace; }
+  .peek .row { display: grid; grid-template-columns: 48px max-content; width: max-content; min-width: 100%; }
+  .peek .ln { text-align: right; padding-right: 14px; color: var(--ink-4); user-select: none; }
+  .peek .src { white-space: pre; padding-right: 18px; color: var(--ink-2); }
+  .peek .row.focus { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+  .peek .row.focus .ln { color: var(--accent); font-weight: 600; }
+  .peek .row.focus .src { color: var(--ink); }
+  .peek .anno { position: sticky; left: 0; padding: 2px 14px 8px 48px; font: 13px/19px "Public Sans", system-ui, sans-serif; }
+  .peek .anno span { display: inline-block; padding: 4px 9px; border-radius: 8px; background: var(--watch-soft); border: 1px solid var(--watch-line); color: var(--watch-ink); }
+  .peek .anno span::before { content: "↑ "; color: var(--watch); font-weight: 700; }
+  .msg.has-code { cursor: pointer; }
+
+  /* Files dropdown: the files the flow uses, in order, grouped by step */
+  .files-pop { position: fixed; z-index: 30; width: 340px; max-height: min(70vh, 640px); overflow: auto; padding: 14px 12px 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line-strong); box-shadow: var(--shadow-lift); }
+  .files-pop[hidden] { display: none; }
+  .files-pop h3 { margin: 0 6px 4px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+  .files-pop .hint { margin: 0 6px 10px; font-size: 12.5px; line-height: 18px; color: var(--ink-3); }
+  .fgroup { padding: 8px 6px 6px; border-radius: 12px; }
+  .fgroup + .fgroup { margin-top: 4px; }
+  .fgroup.cur { background: var(--accent-soft); }
+  .fstep { margin: 0 6px 4px; font-size: 12px; font-weight: 650; color: var(--ink-3); }
+  .fgroup.cur .fstep { color: var(--accent); }
+  .ffile { display: block; width: 100%; padding: 3px 8px; border: 0; border-radius: 8px; background: transparent; text-align: left; cursor: pointer; font: 500 13px/20px "JetBrains Mono", ui-monospace, Consolas, monospace; color: var(--ink); }
+  .ffile:hover { background: var(--subtle); }
+  .ffile.no-code { cursor: default; color: var(--ink-2); }
+  .ffile.no-code:hover { background: transparent; }
+  .fdown { padding-left: 16px; font-size: 12px; line-height: 13px; color: var(--ink-4); user-select: none; }
+  #filesBtn[aria-expanded="true"] { border-color: var(--ink-3); }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<div class="ambient" aria-hidden="true"></div>
+<div class="app">
+  <header class="bar glass">
+    <div class="titles"><h1 id="title"></h1><p class="sub" id="subtitle"></p></div>
+    <nav class="steps" id="steps" aria-label="Steps"></nav>
+    <div class="ctl">
+      <button class="btn" id="filesBtn" aria-expanded="false" aria-controls="filesPop" title="Files in the order the flow uses them (F)">Files ▾</button>
+      <button class="btn" id="prev" aria-label="Previous step">←</button>
+      <span class="counter" id="counter"></span>
+      <button class="btn primary" id="next">Next →</button>
+    </div>
+  </header>
+  <div class="files-pop" id="filesPop" role="dialog" aria-label="Files in order" hidden></div>
+  <main class="stage">
+    <section class="board glass" id="board" aria-label="Diagram">
+      <div class="actors" id="actors"></div>
+      <svg class="wires" id="wires" aria-hidden="true"></svg>
+    </section>
+    <aside class="explain glass" id="explain" aria-live="polite"></aside>
+  </main>
+</div>
+<script>
+window.EXPLAINER = {"title":"R8 · Module 1 — Source to bytecode","subtitle":"What kotlinc turns TapApp.kt into, byte by byte, and why every call is stored as a name written in text. Kotlin from commit 175d6663; the .class is ultra's stagingDebug build (unshrunk, the exact input R8 receives).","theme":"ultra","repo":"D:/Flutter/mobile_apps","ref":"175d6663","actors":[{"id":"kt","name":"TapApp.kt","about":"your Kotlin source","icon":"app","tone":"you","explain":"ultra's Application class: the first of our code to run when the app process starts. 16 lines, written for humans.","file":"TapApp.kt:1-16"},{"id":"kotlinc","name":"kotlinc","about":"the Kotlin compiler","icon":"route","tone":"platform","explain":"A translator. Reads .kt text, checks it, writes .class files. Gradle runs it for you in the compileStagingReleaseKotlin task."},{"id":"cls","name":"TapApp.class","about":"1,301 bytes of bytecode","icon":"inbox","tone":"you","explain":"The compiler's output. Not text, not machine code: a compact binary format any JVM-family runtime understands."},{"id":"pool","name":"Constant pool","about":"the class's name list","icon":"key","tone":"you","explain":"A numbered list inside the .class holding every name the class mentions (classes, methods, fields), written out as text."},{"id":"manifest","name":"AndroidManifest.xml","about":"names TapApp as text","icon":"door","tone":"you","explain":"Tells Android which class to create as the Application, by writing its name as a string: \".TapApp\".","file":"AndroidManifest.xml:130-131"},{"id":"art","name":"ART","about":"Android's runtime","icon":"os","tone":"platform","explain":"The engine on the phone that loads classes and runs their code. It finds classes and methods by looking up their names."},{"id":"measure","name":"Measure SDK","about":"sh.measure.android.Measure","icon":"cloud","tone":"platform","explain":"A third-party library class. TapApp calls Measure.init(...) in release builds."},{"id":"r8","name":"R8","about":"preview — Module 8","icon":"server","tone":"platform","explain":"The tool that later shrinks and renames all these .class files. This lesson shows what it has to work with."}],"steps":[{"short":"The cast","title":"From 16 lines of Kotlin to 1,301 bytes","summary":"We follow one real file, ultra's TapApp.kt, through the compiler and open the result. Everything R8 does later is an edit to files exactly like this one, so this is the ground floor.","oneliner":"R8 never sees your Kotlin. It sees .class files. So we learn to read those first.","boardHint":"Press Next → to compile TapApp.kt."},{"short":"1 · Compile","title":"The compiler turns text into bytecode","summary":"kotlinc reads TapApp.kt and writes TapApp.class. The .class holds bytecode: instructions for an imaginary computer called the JVM. Android then converts it again (into DEX, Module 2) before it reaches the phone.","oneliner":"Source is for humans; bytecode is for runtimes. Same program, different language.","messages":[{"from":"kt","to":"kotlinc","label":"TapApp.kt (text)","kind":"main","why":"This is the whole input. Note line 13: MeasureConfig() with no arguments. Kotlin fills in defaults for you, and we'll see what that turns into in the bytecode.","file":"TapApp.kt:1-16","code":{"path":"apps/ultra_app/android/app/src/main/kotlin/com/tap/app/TapApp.kt","from":1,"to":16,"focus":[7,13],"notes":{"7":"A class that extends Android's Application. Android creates exactly one of these when the app process starts.","9":"Call the parent class's onCreate first.","10":"Start MoEngage.","12":"BuildConfig.DEBUG is a constant the build writes for you: true in debug, false in release.","13":"Release builds only: start Measure with its default settings."},"ref":"175d6663","name":"TapApp.kt","lines":[{"n":1,"t":"package com.tap.app"},{"n":2,"t":""},{"n":3,"t":"import android.app.Application"},{"n":4,"t":"import sh.measure.android.Measure"},{"n":5,"t":"import sh.measure.android.config.MeasureConfig"},{"n":6,"t":""},{"n":7,"t":"class TapApp : Application() {"},{"n":8,"t":"    override fun onCreate() {"},{"n":9,"t":"        super.onCreate()"},{"n":10,"t":"        MoEngageManager.initialize(this)"},{"n":11,"t":"        // Debug builds don't report to Measure."},{"n":12,"t":"        if (!BuildConfig.DEBUG) {"},{"n":13,"t":"            Measure.init(this, MeasureConfig())"},{"n":14,"t":"        }"},{"n":15,"t":"    }"},{"n":16,"t":"}"}],"open":"vscode://file/D:/Flutter/mobile_apps/apps/ultra_app/android/app/src/main/kotlin/com/tap/app/TapApp.kt:7"}},{"from":"kotlinc","to":"cls","label":"writes TapApp.class","kind":"main","why":"New term — bytecode: instructions written for a 'virtual' computer (the JVM) instead of a real CPU. Like Kotlin being turned into a universal recipe card any kitchen can follow. These bytes start with the hex CAFEBABE, the signature every .class file has.","file":"TapApp.hex.txt:1-4","code":{"repo":"D:/apk-lab","path":"module1/TapApp.hex.txt","from":1,"to":8,"focus":[1],"notes":{"1":"cafe babe = the 'magic number': every .class file starts with these 4 bytes. 0000 003d = version 61 (Java 17 format). Then 0044 = 68, the size of the name list (constant pool).","2":"Right on line 1–2 you can already read 'com/tap/app/TapApp' in plain text. Names are stored as text — the most important fact in this lesson.","3":"And here 'android/app/Application', the parent class, again as text."},"ref":"working","name":"TapApp.hex.txt","lines":[{"n":1,"t":"00000000: cafe babe 0000 003d 0044 0100 1263 6f6d  .......=.D...com"},{"n":2,"t":"00000010: 2f74 6170 2f61 7070 2f54 6170 4170 7007  /tap/app/TapApp."},{"n":3,"t":"00000020: 0001 0100 1761 6e64 726f 6964 2f61 7070  .....android/app"},{"n":4,"t":"00000030: 2f41 7070 6c69 6361 7469 6f6e 0700 0301  /Application...."},{"n":5,"t":"00000040: 0006 3c69 6e69 743e 0100 0328 2956 0c00  ..<init>...()V.."},{"n":6,"t":"00000050: 0500 060a 0004 0007 0100 0474 6869 7301  ...........this."},{"n":7,"t":"00000060: 0014 4c63 6f6d 2f74 6170 2f61 7070 2f54  ..Lcom/tap/app/T"},{"n":8,"t":"00000070: 6170 4170 703b 0100 086f 6e43 7265 6174  apApp;...onCreat"}],"open":"vscode://file/D:/apk-lab/module1/TapApp.hex.txt:1"}}]},{"short":"2 · Layout","title":"What's inside a .class file","summary":"Every .class file has the same sections in the same order: magic number, version, constant pool, flags, this class, its parent, interfaces, fields, methods, and attributes. javap (from your JDK) prints them in readable form.","oneliner":"A .class file is a form with fixed boxes, and most boxes just point at entries in the name list.","messages":[{"from":"cls","to":"pool","label":"this_class #2, super_class #4","kind":"main","why":"New term — javap: a JDK tool that decodes a .class into readable text. Notice that 'this class' and 'parent class' are not written directly; they say #2 and #4, meaning 'look at entry 2 and 4 in the name list'.","file":"TapApp.javap.txt:5-11","code":{"repo":"D:/apk-lab","path":"module1/TapApp.javap.txt","from":1,"to":11,"focus":[9,10],"notes":{"4":"The original file name survives in the .class. Useful for crash reports, and it costs bytes.","5":"public final: Kotlin classes are final unless you write 'open'.","7":"61 = Java 17 class format.","9":"'Who am I?' → entry #2 in the constant pool.","10":"'Who is my parent?' → entry #4.","11":"0 fields, 2 methods (the constructor and onCreate), 3 attributes (extra info at the end)."},"ref":"working","name":"TapApp.javap.txt","lines":[{"n":1,"t":"Classfile /D:/Flutter/mobile_apps/apps/ultra_app/build/app/tmp/kotlin-classes/stagingDebug/com/tap/app/TapApp.class"},{"n":2,"t":"  Last modified 6 Oct 2026; size 1301 bytes"},{"n":3,"t":"  SHA-256 checksum 486163d55a84d3b0418b23d3ef14f3f8e6971319e3034f10657d5de17db77ef6"},{"n":4,"t":"  Compiled from \"TapApp.kt\""},{"n":5,"t":"public final class com.tap.app.TapApp extends android.app.Application"},{"n":6,"t":"  minor version: 0"},{"n":7,"t":"  major version: 61"},{"n":8,"t":"  flags: (0x0031) ACC_PUBLIC, ACC_FINAL, ACC_SUPER"},{"n":9,"t":"  this_class: #2                          // com/tap/app/TapApp"},{"n":10,"t":"  super_class: #4                         // android/app/Application"},{"n":11,"t":"  interfaces: 0, fields: 0, methods: 2, attributes: 3"}],"open":"vscode://file/D:/apk-lab/module1/TapApp.javap.txt:9"}}]},{"short":"3 · Name list","title":"The constant pool: every name, as text","summary":"The constant pool is a numbered list. Plain text entries (Utf8) hold the raw strings, and other entries combine them: a Class entry points at a string; a Methodref points at a Class plus a name-and-type. 67 entries for a 16-line class.","oneliner":"Code never says 'call the thing at memory address X'. It says 'call the method whose name is init, in the class whose name is sh/measure/android/Measure'.","messages":[{"from":"pool","to":"pool","label":"#1 → #2 → #8: names built from text","kind":"main","why":"New term — constant pool: the class's own phone book. Entry #8 is 'Application's constructor', built by pointing at #4 (the class) and #7 (name <init> + type ()V). Nothing is a number or address; it's all text underneath.","file":"TapApp.javap.txt:12-25","code":{"repo":"D:/apk-lab","path":"module1/TapApp.javap.txt","from":12,"to":25,"focus":[13,20],"notes":{"13":"#1 is a raw string: com/tap/app/TapApp. Slashes, not dots — that's the internal spelling.","14":"#2 says 'this is a class, its name is string #1'.","17":"<init> is the internal name of every constructor.","18":"()V is a descriptor: () = no parameters, V = returns void.","20":"#8 = Application's constructor, assembled from #4 (class) + #7 (name and type).","25":"#13 = Application.onCreate — what super.onCreate() calls."},"ref":"working","name":"TapApp.javap.txt","lines":[{"n":12,"t":"Constant pool:"},{"n":13,"t":"   #1 = Utf8               com/tap/app/TapApp"},{"n":14,"t":"   #2 = Class              #1             // com/tap/app/TapApp"},{"n":15,"t":"   #3 = Utf8               android/app/Application"},{"n":16,"t":"   #4 = Class              #3             // android/app/Application"},{"n":17,"t":"   #5 = Utf8               <init>"},{"n":18,"t":"   #6 = Utf8               ()V"},{"n":19,"t":"   #7 = NameAndType        #5:#6          // \"<init>\":()V"},{"n":20,"t":"   #8 = Methodref          #4.#7          // android/app/Application.\"<init>\":()V"},{"n":21,"t":"   #9 = Utf8               this"},{"n":22,"t":"  #10 = Utf8               Lcom/tap/app/TapApp;"},{"n":23,"t":"  #11 = Utf8               onCreate"},{"n":24,"t":"  #12 = NameAndType        #11:#6         // onCreate:()V"},{"n":25,"t":"  #13 = Methodref          #4.#12         // android/app/Application.onCreate:()V"}],"open":"vscode://file/D:/apk-lab/module1/TapApp.javap.txt:13"}},{"from":"pool","to":"measure","label":"#39–#44: Measure.init as text","kind":"main","why":"Our call to a third-party SDK is stored the same way: the strings 'sh/measure/android/Measure', 'init', and a descriptor spelling out the parameter types. Line 48 is Kotlin's hidden default-arguments constructor — MeasureConfig() expanded into 9 parameters.","file":"TapApp.javap.txt:43-56","code":{"repo":"D:/apk-lab","path":"module1/TapApp.javap.txt","from":43,"to":56,"focus":[51,53,54],"notes":{"43":"BuildConfig.DEBUG, a field. Z = boolean.","48":"Kotlin's synthetic constructor for default arguments: real params + an int bitmask + a marker. You wrote MeasureConfig(); this is what it really calls.","51":"The class name, as text.","53":"The method name, as text.","54":"Its parameter types, as text: L…; means 'an object of this class'. (Context, MeasureConfig) → V (void).","56":"#44 ties them together: 'Measure.init(Context, MeasureConfig)'."},"ref":"working","name":"TapApp.javap.txt","lines":[{"n":43,"t":"  #31 = Fieldref           #27.#30        // com/tap/app/BuildConfig.DEBUG:Z"},{"n":44,"t":"  #32 = Utf8               android/content/Context"},{"n":45,"t":"  #33 = Class              #32            // android/content/Context"},{"n":46,"t":"  #34 = Utf8               sh/measure/android/config/MeasureConfig"},{"n":47,"t":"  #35 = Class              #34            // sh/measure/android/config/MeasureConfig"},{"n":48,"t":"  #36 = Utf8               (ZIZZLsh/measure/android/config/MsrRequestHeadersProvider;ZZILkotlin/jvm/internal/DefaultConstructorMarker;)V"},{"n":49,"t":"  #37 = NameAndType        #5:#36         // \"<init>\":(ZIZZLsh/measure/android/config/MsrRequestHeadersProvider;ZZILkotlin/jvm/internal/DefaultConstructorMarker;)V"},{"n":50,"t":"  #38 = Methodref          #35.#37        // sh/measure/android/config/MeasureConfig.\"<init>\":(ZIZZLsh/measure/android/config/MsrRequestHeadersProvider;ZZILkotlin/jvm/internal/DefaultConstructorMarker;)V"},{"n":51,"t":"  #39 = Utf8               sh/measure/android/Measure"},{"n":52,"t":"  #40 = Class              #39            // sh/measure/android/Measure"},{"n":53,"t":"  #41 = Utf8               init"},{"n":54,"t":"  #42 = Utf8               (Landroid/content/Context;Lsh/measure/android/config/MeasureConfig;)V"},{"n":55,"t":"  #43 = NameAndType        #41:#42        // init:(Landroid/content/Context;Lsh/measure/android/config/MeasureConfig;)V"},{"n":56,"t":"  #44 = Methodref          #40.#43        // sh/measure/android/Measure.init:(Landroid/content/Context;Lsh/measure/android/config/MeasureConfig;)V"}],"open":"vscode://file/D:/apk-lab/module1/TapApp.javap.txt:51"}}]},{"short":"4 · Instructions","title":"onCreate in bytecode: a stack machine","summary":"The JVM has no named variables in its instructions. It pushes values onto a stack and each instruction consumes them. aload_0 pushes 'this'; invokevirtual pops the object and arguments and calls. Every call instruction names its target by pool number.","oneliner":"Kotlin line 13 becomes ~15 instructions, and the only way the code refers to Measure is through pool entries #35, #38 and #44.","messages":[{"from":"cls","to":"pool","label":"invokestatic #44","kind":"main","why":"New term — stack machine: like a stack of plates. Instructions put values on top (aload_0, iconst_0, new) and others take them off to use them (invoke…, ifne). The number after an instruction (#13, #44) is a constant-pool entry.","file":"TapApp.javap.txt:95-123","code":{"repo":"D:/apk-lab","path":"module1/TapApp.javap.txt","from":99,"to":123,"focus":[107,122],"notes":{"100":"Push 'this' onto the stack.","101":"Kotlin line 9: super.onCreate() — call Application.onCreate (pool #13).","102":"Kotlin line 10 starts: load the MoEngageManager.Companion object.","105":"Call MoEngageManager.Companion.initialize(this).","106":"Kotlin line 12: read BuildConfig.DEBUG.","107":"ifne 44 = 'if not zero (true), jump to instruction 44 (return)'. That's your if (!DEBUG).","110":"Kotlin line 13: create a new MeasureConfig object.","119":"127 = binary 1111111: 'use the default for all 7 optional arguments'.","121":"Call the hidden default-args constructor (pool #38).","122":"Measure.init(this, config) — found by the name in pool #44.","123":"Kotlin line 15: done."},"ref":"working","name":"TapApp.javap.txt","lines":[{"n":99,"t":"      stack=12, locals=1, args_size=1"},{"n":100,"t":"         0: aload_0"},{"n":101,"t":"         1: invokespecial #13                 // Method android/app/Application.onCreate:()V"},{"n":102,"t":"         4: getstatic     #19                 // Field com/tap/app/MoEngageManager.Companion:Lcom/tap/app/MoEngageManager$Companion;"},{"n":103,"t":"         7: aload_0"},{"n":104,"t":"         8: checkcast     #4                  // class android/app/Application"},{"n":105,"t":"        11: invokevirtual #25                 // Method com/tap/app/MoEngageManager$Companion.initialize:(Landroid/app/Application;)V"},{"n":106,"t":"        14: getstatic     #31                 // Field com/tap/app/BuildConfig.DEBUG:Z"},{"n":107,"t":"        17: ifne          44"},{"n":108,"t":"        20: aload_0"},{"n":109,"t":"        21: checkcast     #33                 // class android/content/Context"},{"n":110,"t":"        24: new           #35                 // class sh/measure/android/config/MeasureConfig"},{"n":111,"t":"        27: dup"},{"n":112,"t":"        28: iconst_0"},{"n":113,"t":"        29: iconst_0"},{"n":114,"t":"        30: iconst_0"},{"n":115,"t":"        31: iconst_0"},{"n":116,"t":"        32: aconst_null"},{"n":117,"t":"        33: iconst_0"},{"n":118,"t":"        34: iconst_0"},{"n":119,"t":"        35: bipush        127"},{"n":120,"t":"        37: aconst_null"},{"n":121,"t":"        38: invokespecial #38                 // Method sh/measure/android/config/MeasureConfig.\"<init>\":(ZIZZLsh/measure/android/config/MsrRequestHeadersProvider;ZZILkotlin/jvm/internal/DefaultConstructorMarker;)V"},{"n":122,"t":"        41: invokestatic  #44                 // Method sh/measure/android/Measure.init:(Landroid/content/Context;Lsh/measure/android/config/MeasureConfig;)V"},{"n":123,"t":"        44: return"}],"open":"vscode://file/D:/apk-lab/module1/TapApp.javap.txt:107"}},{"from":"cls","to":"kt","label":"LineNumberTable → lines 9–15","kind":"return","why":"The bytecode keeps a small table: 'instruction 0 came from line 9, instruction 14 from line 12'… That's how a crash report can say TapApp.kt:13. Strip this table (R8 can) and crashes show no line numbers.","file":"TapApp.javap.txt:126-131","code":{"repo":"D:/apk-lab","path":"module1/TapApp.javap.txt","from":124,"to":135,"focus":[126],"notes":{"126":"Maps instruction offsets back to Kotlin line numbers.","127":"Offset 0 → TapApp.kt line 9.","130":"Offset 20 → line 13, the Measure.init line.","132":"LocalVariableTable: names of local variables, for debuggers. Debug builds keep it; release builds normally drop it."},"ref":"working","name":"TapApp.javap.txt","lines":[{"n":124,"t":"      StackMapTable: number_of_entries = 1"},{"n":125,"t":"        frame_type = 44 /* same */"},{"n":126,"t":"      LineNumberTable:"},{"n":127,"t":"        line 9: 0"},{"n":128,"t":"        line 10: 4"},{"n":129,"t":"        line 12: 14"},{"n":130,"t":"        line 13: 20"},{"n":131,"t":"        line 15: 44"},{"n":132,"t":"      LocalVariableTable:"},{"n":133,"t":"        Start  Length  Slot  Name   Signature"},{"n":134,"t":"            0      45     0  this   Lcom/tap/app/TapApp;"},{"n":135,"t":"}"}],"open":"vscode://file/D:/apk-lab/module1/TapApp.javap.txt:126"}}]},{"short":"5 · Linking","title":"At runtime, everything is found by name","summary":"When the phone starts ultra, Android reads the manifest, sees the string \".TapApp\", and asks ART to load the class called com.tap.app.TapApp. When onCreate reaches invokestatic #44, ART looks up a class named sh/measure/android/Measure and a method named init with that exact descriptor. If the name doesn't match, the app crashes.","oneliner":"Two kinds of callers find classes by name: other bytecode (visible in the pool) and strings outside the bytecode (like the manifest). The second kind is invisible to a tool that only reads bytecode.","messages":[{"from":"manifest","to":"art","label":"android:name=\".TapApp\"","kind":"main","why":"New term — linking: connecting a name to the real class or method at runtime. The manifest is plain XML; nothing in any .class file says 'TapApp is the Application'. Only this string does.","file":"AndroidManifest.xml:130-131","code":{"path":"apps/ultra_app/android/app/src/main/AndroidManifest.xml","from":128,"to":134,"focus":[131],"notes":{"131":"A class name written as a string. If TapApp were renamed to 'a' and this string not updated, the app would crash on launch with ClassNotFoundException."},"ref":"175d6663","name":"AndroidManifest.xml","lines":[{"n":128,"t":"    <\/queries>"},{"n":129,"t":""},{"n":130,"t":"    <application"},{"n":131,"t":"        android:name=\".TapApp\""},{"n":132,"t":"        android:label=\"@string/app_name\""},{"n":133,"t":"        android:icon=\"${appIcon}\""},{"n":134,"t":"        android:theme=\"@style/LaunchTheme\""}],"open":"vscode://file/D:/Flutter/mobile_apps/apps/ultra_app/android/app/src/main/AndroidManifest.xml:131"}},{"from":"art","to":"cls","label":"load class com.tap.app.TapApp","kind":"main","why":"ART finds TapApp by its name, creates it with the constructor <init>()V (entry #8's twin), and calls onCreate()."},{"from":"cls","to":"measure","label":"invokestatic #44 → find 'Measure.init'","kind":"main","why":"ART resolves pool #44 by text: class 'sh/measure/android/Measure', method 'init', descriptor '(Context, MeasureConfig)V'. If the SDK's method were renamed and our call not updated, you'd get NoSuchMethodError."},{"from":"measure","to":"art","label":"found → run it","kind":"return","why":"Names match, so the call runs. Linking succeeds only when the caller's text and the callee's text are identical."}]},{"short":"6 · Metadata","title":"Extra luggage: attributes","summary":"After the methods come attributes: SourceFile (\"TapApp.kt\"), InnerClasses, and RuntimeVisibleAnnotations holding kotlin.Metadata — Kotlin's own description of the class so Kotlin reflection can rebuild properties, nullability and default arguments. None of it is needed to run onCreate.","oneliner":"Attributes help humans and tools (crash reports, reflection, debuggers). They don't help the code run, and they cost bytes in every class.","messages":[{"from":"cls","to":"cls","label":"SourceFile, InnerClasses, kotlin.Metadata","kind":"main","why":"New term — attribute: an optional labelled block attached to a class or method. Like the notes stapled to a form. R8 removes most of them unless a rule says keep them (that's what -keepattributes in our proguard-rules.pro does).","file":"TapApp.javap.txt:136-147","code":{"repo":"D:/apk-lab","path":"module1/TapApp.javap.txt","from":136,"to":147,"focus":[138,141],"notes":{"137":"InnerClasses: records that MoEngageManager$Companion lives inside MoEngageManager. The $ is how nested classes are spelled.","138":"SourceFile: the original file name, shown in stack traces (at com.tap.app.TapApp.onCreate(TapApp.kt:13)).","141":"kotlin.Metadata: Kotlin's encoded description of the class, read by kotlin-reflect and some serializers.","146":"d2 = more names as text, including the build variant app_stagingDebug."},"ref":"working","name":"TapApp.javap.txt","lines":[{"n":136,"t":"InnerClasses:"},{"n":137,"t":"  public static final #16= #21 of #15;    // Companion=class com/tap/app/MoEngageManager$Companion of class com/tap/app/MoEngageManager"},{"n":138,"t":"SourceFile: \"TapApp.kt\""},{"n":139,"t":"RuntimeVisibleAnnotations:"},{"n":140,"t":"  0: #45(#46=[I#47,I#48,I#49],#50=I#51,#52=I#53,#54=[s#55],#56=[s#10,s#57,s#5,s#6,s#11,s#58,s#59])"},{"n":141,"t":"    kotlin.Metadata("},{"n":142,"t":"      mv=[2,3,0]"},{"n":143,"t":"      k=1"},{"n":144,"t":"      xi=48"},{"n":145,"t":"      d1=[\"\\u0000\\u0012\\n\\u0002\\u0018\\u0002\\n\\u0002\\u0018\\u0002\\n\\u0002\\b\\u0003\\n\\u0002\\u0010\\u0002\\n\\u0000\\u0018\\u00002\\u00020\\u0001B\\u0007�\\u0006\\u0004\\b\\u0002\\u0010\\u0003J\\b\\u0010\\u0004\\u001a\\u00020\\u0005H\\u0016�\\u0006\\u0006\"]"},{"n":146,"t":"      d2=[\"Lcom/tap/app/TapApp;\",\"Landroid/app/Application;\",\"<init>\",\"()V\",\"onCreate\",\"\",\"app_stagingDebug\"]"},{"n":147,"t":"    )"}],"open":"vscode://file/D:/apk-lab/module1/TapApp.javap.txt:138"}}]},{"short":"7 · Why R8 cares","title":"Two facts R8 is built around","summary":"(a) Because every reference is a name, R8 can rename TapApp → a and Measure.init → b, but only if it rewrites every pool entry that mentions them, in every class, at the same time. (b) Strings outside the bytecode (the manifest, Class.forName(\"…\"), ServiceLoader files, JSON field names) also name classes, and R8 can't always see them. A keep rule tells R8: 'someone you can't see uses this name — leave it alone'.\n\nTeach-back:\n1. TapApp.kt never mentions an address for Measure.init. How does the phone find it?\n2. Why would renaming TapApp to 'a' crash the app, even if every .class file were updated correctly?\n3. Our ultra rules contain -keepnames class ** { *; }. Using this lesson, what does that stop R8 from doing — and to how many classes?","oneliner":"Renaming is safe when every reference is visible. Keep rules exist for the references that aren't.","messages":[{"from":"cls","to":"r8","label":"unshrunk .class files (this build)","kind":"main","why":"This TapApp.class came from a stagingDebug build, so R8 didn't touch it. In a release build, this is exactly what R8 receives — for our code and for all ~38,000 classes of the SDKs."},{"from":"r8","to":"pool","label":"rename everywhere at once","kind":"main","why":"Reasoning: R8 reads every class's constant pool, so it can change a name in the definition and every caller together. That's safe for bytecode-to-bytecode references."},{"from":"manifest","to":"r8","label":"\".TapApp\" — handled by AAPT rules","kind":"async","why":"The build's resource tool (AAPT2) generates keep rules for classes named in the manifest, so TapApp is kept automatically. SDK reflection by string has no such helper — that's what our hand-written keep rules are for (Module 4 and 9)."}]}]};
+</script>
+<script>
+(function () {
+  var D = window.EXPLAINER;
+  document.documentElement.dataset.theme = D.theme || "linen";
+  var $ = function (id) { return document.getElementById(id); };
+  var NS = 'http://www.w3.org/2000/svg';
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var ICONS = {
+    person: '<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    app: '<rect x="6" y="3" width="12" height="18" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 17h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    os: '<rect x="4" y="5" width="16" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 21h6M12 17v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    cloud: '<path d="M7 18a4 4 0 0 1-.5-8 5.5 5.5 0 0 1 10.6 1.5A3.3 3.3 0 0 1 17 18H7Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>',
+    server: '<rect x="4" y="4" width="16" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="4" y="13" width="16" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 7.5h.01M8 16.5h.01" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>',
+    bell: '<path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4l2-2Zm4 4h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>',
+    door: '<path d="M6 21V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17M4 21h16M14 12h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    route: '<circle cx="6" cy="18" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="6" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8.5 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    key: '<circle cx="8" cy="15" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="m11 12 8-8m-3 3 2 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    inbox: '<path d="M4 13h4l2 3h4l2-3h4M5 5h14l1 8v6H4v-6l1-8Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>'
+  };
+
+  document.title = D.title;
+  $('title').textContent = D.title;
+  $('subtitle').textContent = D.subtitle || '';
+
+  var steps = D.steps;
+  var cur = 0;
+  var actorIndex = {};
+  D.actors.forEach(function (a, i) { actorIndex[a.id] = i; });
+
+  // Actor cards
+  var actorsEl = $('actors');
+  if (D.actors.length > 6) actorsEl.classList.add('many');
+  actorsEl.style.gridTemplateColumns = 'repeat(' + D.actors.length + ', minmax(0, 1fr))';
+  D.actors.forEach(function (a) {
+    var card = document.createElement('div');
+    card.className = 'actor tone-' + (a.tone || 'person');
+    card.id = 'actor-' + a.id;
+    card.innerHTML = '<div class="ic"><svg viewBox="0 0 24 24">' + (ICONS[a.icon] || ICONS.app) + '</svg></div>' +
+      '<div class="name"></div><div class="about"></div>';
+    card.querySelector('.name').textContent = a.name.replace(/([a-z])([A-Z])/g, '$1​$2');
+    card.querySelector('.about').textContent = a.about || '';
+    actorsEl.appendChild(card);
+  });
+
+  // Step pills
+  var stepsEl = $('steps');
+  steps.forEach(function (s, i) {
+    var b = document.createElement('button');
+    b.className = 'pill';
+    b.innerHTML = '<span class="n">' + i + '</span>';
+    b.appendChild(document.createTextNode(s.short || s.title));
+    b.addEventListener('click', function () { go(i); });
+    stepsEl.appendChild(b);
+  });
+
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function svg(tag, attrs) { var e = document.createElementNS(NS, tag); for (var k in attrs) e.setAttribute(k, attrs[k]); return e; }
+
+  // Level 2: the code behind one arrow, read from the repo at build time.
+  var sel = -1;
+
+  function renderPeek(code) {
+    var peek = el('div', 'peek');
+    peek.addEventListener('click', function (e) { e.stopPropagation(); });
+    var head = el('div', 'head');
+    var path = el('div', 'path');
+    var dir = code.path.slice(0, code.path.length - code.name.length);
+    path.appendChild(document.createTextNode(dir));
+    path.appendChild(el('b', null, code.name));
+    path.appendChild(document.createTextNode(':' + code.lines[0].n + '-' + code.lines[code.lines.length - 1].n));
+    if (code.ref && code.ref !== 'working') path.appendChild(el('span', 'ref', ' @ ' + code.ref));
+    head.appendChild(path);
+    var open = el('a', 'open', 'Open in VS Code ↗');
+    open.href = code.open;
+    head.appendChild(open);
+    peek.appendChild(head);
+
+    var focus = {};
+    (code.focus || []).forEach(function (n) { focus[n] = 1; });
+    var notes = code.notes || {};
+    var body = el('div', 'code');
+    code.lines.forEach(function (line) {
+      var row = el('div', 'row' + (focus[line.n] ? ' focus' : ''));
+      row.appendChild(el('span', 'ln', String(line.n)));
+      row.appendChild(el('span', 'src', line.t || ' '));
+      body.appendChild(row);
+      if (notes[line.n]) {
+        var anno = el('div', 'anno');
+        anno.appendChild(el('span', null, notes[line.n]));
+        body.appendChild(anno);
+      }
+    });
+    peek.appendChild(body);
+    return peek;
+  }
+
+  function select(k) {
+    var msgs = steps[cur].messages || [];
+    if (k >= 0 && !(msgs[k] && msgs[k].code)) return;
+    sel = k === sel ? -1 : k;
+    document.querySelectorAll('.peek').forEach(function (p) { p.remove(); });
+    document.querySelectorAll('.note').forEach(function (n) { n.classList.toggle('sel', Number(n.dataset.k) === sel); });
+    if (sel >= 0) {
+      var li = document.querySelector('.note[data-k="' + sel + '"]');
+      var peek = renderPeek(msgs[sel].code);
+      li.appendChild(peek);
+      li.scrollIntoView({ block: 'nearest' });
+    }
+    document.querySelector('.stage').classList.toggle('wide', sel >= 0);
+    heat(sel);
+    requestAnimationFrame(function () { drawWires(false); });
+    try { history.replaceState(null, '', '#step=' + cur + (sel >= 0 ? '&code=' + (sel + 1) : '')); } catch (e) {}
+  }
+
+  function renderExplain(s, i) {
+    var box = $('explain');
+    box.innerHTML = '';
+    box.appendChild(el('div', 'eyebrow', i === 0 ? 'Start here' : 'Step ' + i + ' of ' + (steps.length - 1)));
+    box.appendChild(el('h2', null, s.title));
+    if (s.summary) box.appendChild(el('p', 'summary', s.summary));
+    var ol = el('ol', 'notes');
+    var items = s.messages && s.messages.length ? s.messages : null;
+    if (items) {
+      items.forEach(function (m, k) {
+        var li = el('li', 'note ' + (m.kind || 'main') + (m.code ? ' has-code' : ''));
+        li.dataset.k = k;
+        li.appendChild(el('span', 'num', String(k + 1)));
+        var body = el('div');
+        var what = el('div', 'what', m.label);
+        if (m.code) what.appendChild(el('span', 'chip', '</> code'));
+        body.appendChild(what);
+        if (m.why) body.appendChild(el('div', 'why', m.why));
+        if (m.file) body.appendChild(el('div', 'file', m.file));
+        li.appendChild(body);
+        li.addEventListener('mouseenter', function () { heat(k); });
+        li.addEventListener('mouseleave', function () { heat(sel); });
+        if (m.code) li.addEventListener('click', function () { select(k); });
+        ol.appendChild(li);
+      });
+    } else {
+      D.actors.forEach(function (a, k) {
+        var li = el('li', 'note');
+        li.appendChild(el('span', 'num', String(k + 1)));
+        var body = el('div');
+        body.appendChild(el('div', 'what', a.name));
+        body.appendChild(el('div', 'why', a.explain || a.about || ''));
+        if (a.file) body.appendChild(el('div', 'file', a.file));
+        li.appendChild(body);
+        ol.appendChild(li);
+      });
+    }
+    box.appendChild(ol);
+    if (s.oneliner) {
+      var o = el('div', 'oneliner');
+      o.appendChild(el('b', null, 'In one line: '));
+      o.appendChild(document.createTextNode(s.oneliner));
+      box.appendChild(o);
+    }
+    var lg = el('div', 'legend');
+    lg.innerHTML = '<span><i></i>call / send</span><span><i class="r"></i>answer back</span><span><i class="a"></i>happens later, on its own</span>';
+    box.appendChild(lg);
+    var hasCode = (s.messages || []).some(function (m) { return m.code; });
+    box.appendChild(el('div', 'keys', '← → to move between steps · hover a row to find its arrow' +
+      (hasCode ? ' · click a </> row (or its arrow, or press its number) to see the code · Esc closes it' : '')));
+  }
+
+  function heat(k) {
+    var groups = document.querySelectorAll('#wires .msg');
+    groups.forEach(function (g) { g.classList.toggle('cold', k >= 0 && Number(g.dataset.k) !== k); });
+    document.querySelectorAll('.note').forEach(function (n) { n.classList.toggle('hot', Number(n.dataset.k) === k); });
+  }
+
+  function drawWires(animate) {
+    var board = $('board');
+    var wires = $('wires');
+    var W = board.clientWidth, H = board.clientHeight;
+    wires.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    wires.setAttribute('width', W); wires.setAttribute('height', H);
+    wires.innerHTML = '';
+    var defs = svg('defs', {});
+    var css = getComputedStyle(document.documentElement);
+    [['main', css.getPropertyValue('--ink').trim()], ['return', css.getPropertyValue('--ink-3').trim()], ['async', css.getPropertyValue('--accent').trim()]].forEach(function (p) {
+      var mk = svg('marker', { id: 'arr-' + p[0], viewBox: '0 0 10 10', refX: '8.5', refY: '5', markerWidth: '7', markerHeight: '7', orient: 'auto-start-reverse' });
+      mk.appendChild(svg('path', { d: 'M0 0 L10 5 L0 10 z', fill: p[1] }));
+      defs.appendChild(mk);
+    });
+    wires.appendChild(defs);
+
+    var bRect = board.getBoundingClientRect();
+    var xs = [], cardBottom = 0;
+    D.actors.forEach(function (a) {
+      var r = document.getElementById('actor-' + a.id).getBoundingClientRect();
+      xs.push(r.left - bRect.left + r.width / 2);
+      cardBottom = Math.max(cardBottom, r.bottom - bRect.top);
+    });
+    xs.forEach(function (x) { wires.appendChild(svg('line', { x1: x, y1: cardBottom + 6, x2: x, y2: H - 18, class: 'lifeline' })); });
+
+    var s = steps[cur];
+    var msgs = s.messages || [];
+    var active = {};
+    msgs.forEach(function (m) { active[m.from] = 1; active[m.to] = 1; });
+    D.actors.forEach(function (a) {
+      var c = document.getElementById('actor-' + a.id);
+      c.classList.toggle('dim', msgs.length > 0 && !active[a.id]);
+      c.classList.toggle('on', !!active[a.id]);
+    });
+    var old = document.querySelector('.empty-cast'); if (old) old.remove();
+    if (!msgs.length) {
+      var hint = el('div', 'empty-cast', s.boardHint || 'Press Next → to watch the first step.');
+      board.appendChild(hint);
+      return;
+    }
+
+    var top = cardBottom + 56, bottom = H - 36;
+    var gap = Math.min(110, Math.max(58, (bottom - top) / Math.max(1, msgs.length - 1 || 1)));
+    if (msgs.length === 1) gap = 0;
+    var used = gap * (msgs.length - 1);
+    var y0 = top + Math.max(0, ((bottom - top) - used) / 2.6);
+
+    msgs.forEach(function (m, k) {
+      var kind = m.kind || 'main';
+      var x1 = xs[actorIndex[m.from]], x2 = xs[actorIndex[m.to]];
+      var y = y0 + k * gap;
+      var dir = x2 >= x1 ? 1 : -1;
+      var g = svg('g', { class: 'msg' + (m.code ? ' has-code' : '') + (sel >= 0 && sel !== k ? ' cold' : ''), 'data-k': k });
+      var start = x1 + dir * 8, end = x2 - dir * 10;
+      var path = svg('path', { d: 'M' + start + ' ' + y + ' L' + end + ' ' + y, class: 'wire ' + kind, 'marker-end': 'url(#arr-' + kind + ')' });
+      g.appendChild(path);
+      var mid = (x1 + x2) / 2;
+      var label = svg('text', { x: mid, y: y - 17, 'text-anchor': 'middle', class: 'wlabel ' + kind });
+      label.textContent = m.label;
+      g.appendChild(label);
+      var badge = svg('g', { class: 'badge ' + kind, transform: 'translate(' + x1 + ' ' + y + ')' });
+      badge.appendChild(svg('circle', { r: 11 }));
+      var t = svg('text', { 'text-anchor': 'middle', dy: '4' }); t.textContent = String(k + 1);
+      badge.appendChild(t);
+      g.appendChild(badge);
+      g.addEventListener('mouseenter', function () { heat(k); });
+      g.addEventListener('mouseleave', function () { heat(sel); });
+      if (m.code) g.addEventListener('click', function () { select(k); });
+      wires.appendChild(g);
+
+      if (animate && !reduce) {
+        var len = Math.abs(end - start);
+        var dash = kind === 'main' ? '' : path.style.strokeDasharray;
+        g.style.opacity = '0';
+        setTimeout(function () {
+          g.style.transition = 'opacity .25s';
+          g.style.opacity = '1';
+          if (kind === 'main') {
+            path.style.strokeDasharray = len + ' ' + len;
+            path.style.strokeDashoffset = String(len);
+            path.getBoundingClientRect();
+            path.style.transition = 'stroke-dashoffset .5s ease-out';
+            path.style.strokeDashoffset = '0';
+          }
+        }, 120 + k * 380);
+      }
+    });
+  }
+
+  function go(i, fromHash) {
+    cur = Math.max(0, Math.min(steps.length - 1, i));
+    sel = -1;
+    document.querySelector('.stage').classList.remove('wide');
+    stepsEl.querySelectorAll('.pill').forEach(function (p, k) { if (k === cur) p.setAttribute('aria-current', 'step'); else p.removeAttribute('aria-current'); });
+    var active = stepsEl.children[cur]; if (active && active.scrollIntoView) active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    $('prev').disabled = cur === 0;
+    $('next').textContent = cur === steps.length - 1 ? 'Start over ↺' : 'Next →';
+    $('counter').textContent = cur + ' / ' + (steps.length - 1);
+    renderExplain(steps[cur], cur);
+    drawWires(true);
+    if (!fromHash) { try { history.replaceState(null, '', '#step=' + cur); } catch (e) { location.hash = 'step=' + cur; } }
+  }
+
+  // Files dropdown: each step's files, in arrow order, consecutive repeats collapsed.
+  var FILE_RE = /([\w.-]+\.(?:dart|kt|kts|swift|java|xml|gradle|ya?ml|json|plist|m|h))\b/;
+  function fileOf(m) {
+    if (m.code) return m.code.name;
+    var x = FILE_RE.exec(m.file || '');
+    return x ? x[1] : null;
+  }
+  var fileChain = [];
+  steps.forEach(function (s, i) {
+    var files = [];
+    (s.messages || []).forEach(function (m, k) {
+      var name = fileOf(m);
+      if (!name) return;
+      var last = files[files.length - 1];
+      if (last && last.name === name) { if (!last.code && m.code) { last.k = k; last.code = true; } return; }
+      files.push({ name: name, k: k, code: !!m.code });
+    });
+    if (files.length) fileChain.push({ i: i, label: s.short || s.title, files: files });
+  });
+
+  var pop = $('filesPop'), filesBtn = $('filesBtn');
+  function renderFiles() {
+    pop.innerHTML = '';
+    pop.appendChild(el('h3', null, 'Files, in order'));
+    pop.appendChild(el('p', 'hint', 'How the flow hops from file to file. Click one to jump to its step and code.'));
+    fileChain.forEach(function (g) {
+      var box = el('div', 'fgroup' + (g.i === cur ? ' cur' : ''));
+      box.appendChild(el('div', 'fstep', 'Step ' + g.i + ' · ' + g.label));
+      g.files.forEach(function (f, n) {
+        if (n > 0) box.appendChild(el('div', 'fdown', '↓'));
+        var b = el('button', 'ffile' + (f.code ? '' : ' no-code'), f.name);
+        b.type = 'button';
+        b.addEventListener('click', function () {
+          closeFiles();
+          go(g.i);
+          if (f.code) select(f.k);
+        });
+        box.appendChild(b);
+      });
+      pop.appendChild(box);
+    });
+  }
+  function openFiles() {
+    renderFiles();
+    var r = filesBtn.getBoundingClientRect();
+    pop.style.top = (r.bottom + 8) + 'px';
+    pop.style.left = Math.max(12, Math.min(r.right - 340, window.innerWidth - 352)) + 'px';
+    pop.hidden = false;
+    filesBtn.setAttribute('aria-expanded', 'true');
+  }
+  function closeFiles() { pop.hidden = true; filesBtn.setAttribute('aria-expanded', 'false'); }
+  function toggleFiles() { if (pop.hidden) openFiles(); else closeFiles(); }
+  if (!fileChain.length) filesBtn.hidden = true;
+  filesBtn.addEventListener('click', function (e) { e.stopPropagation(); toggleFiles(); });
+  pop.addEventListener('click', function (e) { e.stopPropagation(); });
+  document.addEventListener('click', function () { if (!pop.hidden) closeFiles(); });
+
+  $('prev').addEventListener('click', function () { go(cur - 1); });
+  $('next').addEventListener('click', function () { go(cur === steps.length - 1 ? 0 : cur + 1); });
+  document.addEventListener('keydown', function (e) {
+    if (e.target && /input|textarea/i.test(e.target.tagName)) return;
+    if (e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); go(cur + 1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(cur - 1); }
+    else if (e.key === 'Home') { go(0); }
+    else if (e.key === 'Escape' && !pop.hidden) { closeFiles(); }
+    else if (e.key === 'Escape' && sel >= 0) { select(sel); }
+    else if ((e.key === 'f' || e.key === 'F') && !filesBtn.hidden) { toggleFiles(); }
+    else if (/^[1-9]$/.test(e.key)) { select(Number(e.key) - 1); }
+  });
+  var rt;
+  window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { drawWires(false); }, 120); });
+  var m = /step=(\d+)/.exec(location.hash);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { drawWires(false); });
+  go(m ? Number(m[1]) : 0, true);
+  var c = /code=(\d+)/.exec(location.hash);
+  if (c) select(Number(c[1]) - 1);
+  if (/files=1/.test(location.hash) && !filesBtn.hidden) openFiles();
+})();
+</script>
+</body>
+</html>

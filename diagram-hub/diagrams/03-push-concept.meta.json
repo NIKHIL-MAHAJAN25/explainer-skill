@@ -1,0 +1,12 @@
+{
+  "title": "How a push notification travels",
+  "description": "Token as an address, the two kinds of push (notification vs data), who draws it when the app is closed vs open, the one 'mailbox' service, the tap, and the token refresh.",
+  "tags": [
+    "lesson",
+    "notifications",
+    "explainer"
+  ],
+  "order": 3,
+  "theme": "neutral",
+  "kind": "concept"
+}

@@ -1,0 +1,15 @@
+{
+  "title": "Socket and plug: one shared package, two apps",
+  "description": "Why an SDK in services ships in both apps, the abstract class as a socket, each app's plug with @LazySingleton(as:), the generated registration, module order in injector.dart, and how shared code receives the right plug.",
+  "tags": [
+    "lesson",
+    "architecture",
+    "di",
+    "explainer",
+    "moengage-task",
+    "adapter-task"
+  ],
+  "order": 7,
+  "theme": "neutral",
+  "kind": "concept"
+}

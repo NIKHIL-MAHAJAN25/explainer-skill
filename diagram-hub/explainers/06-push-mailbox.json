@@ -1,0 +1,238 @@
+{
+  "title": "One mailbox: the manifest decides",
+  "subtitle": "Why only one push service gets each push, and how step 1 takes control. Real manifests from TapInvest as the example.",
+  "theme": "neutral",
+  "repo": "D:/Flutter/mobile_apps",
+  "ref": "89a6247a",
+  "meta": {
+    "description": "Every library brings a manifest, Gradle merges them into one, Android delivers each push to exactly one MESSAGING_EVENT service (priority, then order), the silent trap of removing MoEngage alone, and step 1's TapMessagingService + tools:node=\"remove\".",
+    "tags": ["lesson", "notifications", "manifest", "explainer", "moengage-task"],
+    "order": 6,
+    "theme": "neutral",
+    "kind": "concept"
+  },
+  "actors": [
+    {
+      "id": "ours", "name": "Your manifest", "about": "app/src/main", "icon": "app", "tone": "you",
+      "explain": "The AndroidManifest.xml you edit. TapInvest's declares MoEngage's push service today."
+    },
+    {
+      "id": "libs", "name": "Library manifests", "about": "plugins + SDKs", "icon": "inbox", "tone": "platform",
+      "explain": "Every plugin and SDK ships its own small manifest: the Flutter firebase_messaging plugin, Firebase itself, MoEngage…"
+    },
+    {
+      "id": "merger", "name": "Manifest merger", "about": "Gradle · build time", "icon": "route", "tone": "platform",
+      "explain": "A build step that combines all those manifests into one. It runs on your PC when you build, not on the phone."
+    },
+    {
+      "id": "merged", "name": "Merged manifest", "about": "inside the APK", "icon": "key", "tone": "platform",
+      "explain": "The single manifest that actually ships. The phone only ever sees this one."
+    },
+    {
+      "id": "fcm", "name": "FCM", "about": "Google's push", "icon": "cloud", "tone": "platform",
+      "explain": "Delivers a push for your app's package to the phone."
+    },
+    {
+      "id": "os", "name": "Android", "about": "picks one service", "icon": "os", "tone": "platform",
+      "explain": "Reads the merged manifest and starts exactly one MESSAGING_EVENT service for each push."
+    },
+    {
+      "id": "mailbox", "name": "The mailbox", "about": "the winning service", "icon": "bell", "tone": "you",
+      "explain": "Whichever service won. Its onMessageReceived gets open-app pushes and its onNewToken gets token changes. The others get nothing."
+    }
+  ],
+  "steps": [
+    {
+      "short": "The cast",
+      "title": "Who decides which code gets a push",
+      "summary": "Two moments matter. At build time, many manifests are merged into one. At run time, Android uses that merged manifest to pick one service for each push. The decision is made by XML, not by your Kotlin code.",
+      "oneliner": "Your manifest is just one voice. The merged manifest is the one that counts.",
+      "boardHint": "Press Next → to see where the competing mailboxes come from."
+    },
+    {
+      "short": "Many",
+      "title": "Everyone brings a manifest",
+      "summary": "Your app's manifest declares one push service, but libraries declare their own. In TapInvest today there are three candidates for MESSAGING_EVENT: MoEngage's (from our manifest), the Flutter plugin's, and Firebase's own base service.",
+      "oneliner": "Adding a plugin can add a push service you never wrote a line for.",
+      "messages": [
+        {
+          "from": "ours", "to": "merger", "label": "MoEngage's service", "kind": "main",
+          "why": "Our own manifest declares MoEngage's SDK class for MESSAGING_EVENT. (MoEngage's docs ask apps to do this.)",
+          "file": "AndroidManifest.xml:331-337",
+          "code": {
+            "path": "apps/ultra_app/android/app/src/main/AndroidManifest.xml", "from": 330, "to": 337, "focus": [332, 335],
+            "notes": {
+              "332": "An SDK class, declared in our file.",
+              "335": "This one line is what makes a Service a push mailbox."
+            }
+          }
+        },
+        {
+          "from": "libs", "to": "merger", "label": "plugin's service + receiver", "kind": "main",
+          "why": "New term: manifest merger. The firebase_messaging plugin ships this manifest, and Gradle merges it into ours automatically. It declares its own MESSAGING_EVENT service, plus a receiver we'll meet later.",
+          "file": "firebase_messaging-16.0.0 AndroidManifest.xml:13-26",
+          "code": {
+            "repo": "D:/FlutterCache/Pub-Cache/hosted/pub.dev/firebase_messaging-16.0.0",
+            "path": "android/src/main/AndroidManifest.xml", "from": 13, "to": 26, "focus": [13, 16, 24],
+            "notes": {
+              "13": "Candidate #2: the Flutter plugin's mailbox.",
+              "16": "Same intent filter as MoEngage's.",
+              "24": "A separate receiver for the raw push. Not a mailbox; it just gets a copy (step 4)."
+            }
+          }
+        },
+        {
+          "from": "libs", "to": "merger", "label": "Firebase's base service (−500)", "kind": "main",
+          "why": "Firebase's own library also declares a default service, but with priority −500 on purpose: 'use me only if nobody else is there'. Seen in the merged manifest of your last ultra build (14:20, before step 1).",
+          "file": "merged AndroidManifest.xml:960-968",
+          "code": {
+            "path": "apps/ultra_app/build/app/intermediates/merged_manifests/stagingDebug/processStagingDebugManifest/AndroidManifest.xml",
+            "ref": "working", "from": 961, "to": 968, "focus": [962, 965],
+            "notes": {
+              "962": "Candidate #3: Firebase's built-in default.",
+              "965": "−500: deliberately last in line."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "short": "Merge",
+      "title": "The merger makes one manifest",
+      "summary": "Gradle combines all of them into one merged manifest, which is what ships in the APK. Your own manifest's entries come first, then the libraries'. Nothing removes duplicates by itself: all three services are in the result.",
+      "oneliner": "The merger adds everything unless you tell it otherwise. Three mailboxes go in, three come out.",
+      "messages": [
+        {
+          "from": "merger", "to": "merged", "label": "one file, 3 MESSAGING_EVENT services", "kind": "main",
+          "why": "New term: merged manifest. You can see it in Android Studio's 'Merged Manifest' tab, or in build/app/intermediates/merged_manifests/. These lines are from your 14:20 build.",
+          "file": "merged AndroidManifest.xml:512-520",
+          "code": {
+            "path": "apps/ultra_app/build/app/intermediates/merged_manifests/stagingDebug/processStagingDebugManifest/AndroidManifest.xml",
+            "ref": "working", "from": 512, "to": 520, "focus": [514],
+            "notes": { "514": "MoEngage's, first in the file, because our manifest's entries come first." }
+          }
+        },
+        {
+          "from": "merged", "to": "merged", "label": "…and the plugin's, further down", "kind": "main",
+          "why": "The plugin's service is merged in after ours, with the same intent filter and the same (default) priority.",
+          "file": "merged AndroidManifest.xml:639-646",
+          "code": {
+            "path": "apps/ultra_app/build/app/intermediates/merged_manifests/stagingDebug/processStagingDebugManifest/AndroidManifest.xml",
+            "ref": "working", "from": 639, "to": 646, "focus": [640],
+            "notes": { "640": "Candidate #2, later in the file." }
+          }
+        }
+      ]
+    },
+    {
+      "short": "Deliver",
+      "title": "A push arrives: Android picks ONE service",
+      "summary": "When an open-app push comes in, Android looks for a MESSAGING_EVENT service in your package and starts exactly one. Highest priority wins; between equal priorities, the one declared first. That's MoEngage's today.",
+      "oneliner": "One push, one mailbox. The losers aren't called at all, not even for onNewToken.",
+      "messages": [
+        {
+          "from": "fcm", "to": "os", "label": "push for com.tap.app", "kind": "main",
+          "why": "The push is addressed to the app, not to a class. Android has to choose which class gets it."
+        },
+        {
+          "from": "os", "to": "merged", "label": "who handles MESSAGING_EVENT?", "kind": "main",
+          "why": "New term: intent-filter priority. A number on the filter (default 0). Higher wins. Firebase's base at −500 loses to both others; MoEngage and the plugin tie at 0, and the first declared wins. (Tie rule: reasoning, but it matches what we see: MoEngage gets our pushes today.)"
+        },
+        {
+          "from": "os", "to": "mailbox", "label": "start MoEngage's service", "kind": "main",
+          "why": "Only this service's onMessageReceived and onNewToken run. The plugin's service is never started. That's why, today, Dart's onTokenRefresh may never fire."
+        }
+      ]
+    },
+    {
+      "short": "The trap",
+      "title": "The trap: delete only MoEngage",
+      "summary": "Remove MoEngage's lines and the plugin's service becomes first in line. But its onMessageReceived is deliberately empty. The plugin's receiver still passes a copy to Dart, and our Dart doesn't listen. So open-app pushes vanish, with no error.",
+      "oneliner": "Closed-app pushes still work (Android draws them), so you'd only notice with the app open.",
+      "messages": [
+        {
+          "from": "os", "to": "mailbox", "label": "plugin's service now wins", "kind": "main",
+          "why": "Next in line after MoEngage. Its onNewToken is useful (it tells Dart), but its onMessageReceived does nothing.",
+          "file": "FlutterFirebaseMessagingService.java:11-22",
+          "code": {
+            "repo": "D:/FlutterCache/Pub-Cache/hosted/pub.dev/firebase_messaging-16.0.0",
+            "path": "android/src/main/java/io/flutter/plugins/firebase/messaging/FlutterFirebaseMessagingService.java",
+            "from": 11, "to": 22, "focus": [14, 18],
+            "notes": {
+              "14": "Useful: passes a new token to Dart's onTokenRefresh.",
+              "18": "Empty on purpose. Nothing gets drawn here."
+            }
+          }
+        },
+        {
+          "from": "os", "to": "libs", "label": "receiver gets a copy", "kind": "async",
+          "why": "New term: BroadcastReceiver. A class Android calls for a system-wide event, here the raw push. The plugin's receiver forwards open-app pushes to Dart's FirebaseMessaging.onMessage stream.",
+          "file": "FlutterFirebaseMessagingReceiver.java:38-52",
+          "code": {
+            "repo": "D:/FlutterCache/Pub-Cache/hosted/pub.dev/firebase_messaging-16.0.0",
+            "path": "android/src/main/java/io/flutter/plugins/firebase/messaging/FlutterFirebaseMessagingReceiver.java",
+            "from": 38, "to": 52, "focus": [49, 50],
+            "notes": {
+              "49": "App in the foreground?",
+              "50": "Then hand it to Dart's onMessage. TapInvest's Dart never listens to onMessage, so it's dropped."
+            }
+          }
+        },
+        {
+          "from": "mailbox", "to": "mailbox", "label": "nothing drawn, no error", "kind": "return",
+          "why": "Nobody builds a notification. This is the bug step 1 was written to prevent."
+        }
+      ]
+    },
+    {
+      "short": "Take control",
+      "title": "Step 1: one mailbox, and it's ours",
+      "summary": "Step 1 (in your stash) declares our own TapMessagingService for MESSAGING_EVENT, and tells the merger to delete the plugin's service with tools:node=\"remove\". TapMessagingService extends the plugin's class, so it keeps the plugin's useful onNewToken.",
+      "oneliner": "Don't fight over the mailbox: remove the rivals and inherit what they did well.",
+      "messages": [
+        {
+          "from": "ours", "to": "merger", "label": "TapMessagingService + remove plugin's", "kind": "main",
+          "why": "New term: tools:node=\"remove\". An instruction to the merger, not to Android: 'when a library brings this element, drop it'. Only works from your own manifest, which is why the merger lets you win.",
+          "file": "AndroidManifest.xml:330-342 (stash)",
+          "code": {
+            "path": "apps/ultra_app/android/app/src/main/AndroidManifest.xml", "ref": "446fc813",
+            "from": 330, "to": 342, "focus": [334, 342],
+            "notes": {
+              "334": "Our own mailbox.",
+              "342": "Delete the plugin's service from the merged result."
+            }
+          }
+        },
+        {
+          "from": "os", "to": "mailbox", "label": "onMessageReceived → draw it", "kind": "main",
+          "why": "Extends FlutterFirebaseMessagingService: onNewToken is inherited (Dart still hears about new tokens), and onMessageReceived now draws the card with our NotificationUtil.",
+          "file": "TapMessagingService.kt:1-15 (stash)",
+          "code": {
+            "path": "apps/ultra_app/android/app/src/main/kotlin/com/tap/app/TapMessagingService.kt", "ref": "d9046edb",
+            "from": 1, "to": 15, "focus": [10, 13],
+            "notes": {
+              "10": "Inherits onNewToken from the plugin's class: like extending a base Activity to keep its behaviour.",
+              "13": "The job MoEngage → PushListener used to do."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "short": "Check",
+      "title": "How to prove it worked",
+      "summary": "After building with step 1, the merged manifest should contain exactly two MESSAGING_EVENT services: TapMessagingService, and Firebase's base at −500 (harmless, it always loses). No MoEngage, no plugin service.",
+      "oneliner": "Don't trust the source manifest. Check the merged one.",
+      "messages": [
+        {
+          "from": "merger", "to": "merged", "label": "build with step 1", "kind": "main",
+          "why": "Open build/app/intermediates/merged_manifests/stagingDebug/…/AndroidManifest.xml (or Android Studio's Merged Manifest tab) and search for MESSAGING_EVENT."
+        },
+        {
+          "from": "fcm", "to": "mailbox", "label": "open-app push → TapMessagingService", "kind": "main",
+          "why": "Then test on a phone: an open-app push shows, and logcat has the 'NotificationUtil:' line. That's verification check #1 in the handoff."
+        }
+      ]
+    }
+  ]
+}
